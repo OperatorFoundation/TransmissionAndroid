@@ -1,6 +1,8 @@
 package org.operatorfoundation.transmission
 
-class TransmissionConnection
+import java.net.Socket
+
+class TransmissionConnection(id: Int, connection: Socket)
 {
     // Reads exactly size bytes
     fun read(size: Int): ByteArray?
@@ -33,4 +35,10 @@ class TransmissionConnection
     {
         return false
     }
+}
+
+enum class ConnectionType
+{
+    tcp,
+    udp
 }

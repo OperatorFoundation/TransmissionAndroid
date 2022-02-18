@@ -254,17 +254,71 @@ class TransmissionConnection(var connection: Socket)
 
     fun write(string: String): Boolean
     {
-        return false
+        writeLock.lock()
+        try
+        {
+            val data = string.toByteArray()
+            val success = networkWrite(data)
+
+            return success
+        }
+        finally { writeLock.unlock() }
     }
 
     fun write(data: ByteArray): Boolean
     {
-        return false
+        writeLock.lock()
+        try
+        {
+            val success = networkWrite(data)
+            return success
+        }
+        finally { writeLock.unlock() }
     }
 
     fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
-        return false
+        writeLock.lock()
+        try
+        {
+            var messageSize = data.size
+            var maybemessageSizeData: ByteArray? = null
+
+            // FIXME: get bounded length for each case, convert to an int and set as the value of maybeData
+            when(prefixSizeInBits)
+            {
+                8 ->
+                {
+
+                }
+                16 ->
+                {
+
+                }
+                32 ->
+                {
+
+                }
+                64 ->
+                {
+
+                }
+                else -> return false
+            }
+
+            if (maybemessageSizeData == null)
+            {
+                return false
+            }
+            else
+            {
+                val atomicData = maybemessageSizeData + data
+                val success = networkWrite(atomicData)
+
+                return success
+            }
+        }
+        finally { writeLock.unlock() }
     }
 
     private fun networkWrite(data: ByteArray): Boolean

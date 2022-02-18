@@ -8,6 +8,7 @@ import java.net.*
 import java.util.UUID.randomUUID
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.math.min
 
 class TransmissionConnection(var connection: Socket)
 {
@@ -55,86 +56,143 @@ class TransmissionConnection(var connection: Socket)
     // Reads exactly size bytes
     fun read(size: Int): ByteArray?
     {
-        if (size < 1)
+        readLock.lock()
+        try
         {
-            Log.e(TAG, "Requested a read size less than 1.")
-            return null
-        }
-        else if (size <= buffer.size)
-        {
-            val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-            val remainingBytes = buffer.drop(size).toByteArray()
-
-            buffer = remainingBytes
-            return readBytes
-        }
-        else
-        {
-            val maybeData = netwokRead(size)
-
-            if (maybeData != null)
+            if (size < 1)
             {
-                buffer += maybeData
+                Log.e(TAG, "Requested a read size less than 1.")
+                return null
+            }
+            else if (size <= buffer.size)
+            {
+                val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                val remainingBytes = buffer.drop(size).toByteArray()
 
-                if (size <= buffer.size)
-                {
-                    val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-                    val remainingBytes = buffer.drop(size).toByteArray()
-
-                    buffer = remainingBytes
-                    return readBytes
-                }
-                else
-                {
-                    Log.e(TAG, "Requested a read for more data than what was available in the buffer.")
-                    return null
-                }
+                buffer = remainingBytes
+                return readBytes
             }
             else
             {
-                Log.e(TAG,"Failed to read data from the netowrk.")
-                return null
+                val maybeData = netwokRead(size)
+
+                if (maybeData != null)
+                {
+                    buffer += maybeData
+
+                    if (size <= buffer.size)
+                    {
+                        val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                        val remainingBytes = buffer.drop(size).toByteArray()
+
+                        buffer = remainingBytes
+                        return readBytes
+                    }
+                    else
+                    {
+                        Log.e(TAG, "Requested a read for more data than what was available in the buffer.")
+                        return null
+                    }
+                }
+                else
+                {
+                    Log.e(TAG,"Failed to read data from the netowrk.")
+                    return null
+                }
             }
         }
+        finally { readLock.unlock() }
     }
 
-    // reads up to maxSize bytes
+    // Reads up to maxSize bytes
     fun readMaxSize(maxSize: Int): ByteArray?
     {
-        return null
+        readLock.lock()
+        try
+        {
+            if (maxSize < 1)
+            {
+                Log.e(TAG, "Requested a max read size less than 1.")
+                return null
+            }
+
+            var size = maxSize
+
+            if (maxSize > buffer.size)
+            {
+                size = buffer.size
+            }
+
+            if (size > 0)
+            {
+                val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                val remainingBytes = buffer.drop(size).toByteArray()
+
+                buffer = remainingBytes
+                return readBytes
+            }
+            else
+            {
+                // The buffer was empty go get more data
+                var maybeData = ByteArray(maxSize)
+                val bytesReadCount = inputStream.read(maybeData)
+
+                if (bytesReadCount <= 0)
+                {
+                    Log.d(TAG, "tried to read data from the network and got nothing.")
+                    return null
+                }
+                else if (bytesReadCount < maxSize) // We initialized maybeData to be max size, trim off the excess 0's if we read fewer bytes than that
+                {
+                    maybeData = maybeData.dropLast(maybeData.size - bytesReadCount).toByteArray()
+                }
+
+                // We got some data, add it to the buffer
+                buffer += maybeData
+
+                val targetSize = min(maxSize, buffer.size)
+                val result = buffer.dropLast(buffer.size - targetSize).toByteArray()
+                buffer = buffer.drop(targetSize).toByteArray()
+
+                return result
+            }
+        }
+        catch (readError: Exception)
+        {
+            Log.e(TAG, "Connection inputSream encountered an error while trying to read: " + readError.toString())
+            return null
+        }
+        finally { readLock.unlock() }
     }
 
     fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
     {
-        return null
+        readLock.lock()
+        try
+        {
+            return null
+        }
+        finally { readLock.unlock() }
     }
 
-    fun netwokRead(size: Int): ByteArray?
+    private fun netwokRead(size: Int): ByteArray?
     {
         while (buffer.size < size)
         {
-            readLock.lock()
-
             try
             { inputStream.read(buffer, buffer.size, size) }
             catch (readError: Exception)
             {
-                Log.e(TAG, "Connection inputSream encountered an error while trying to read: " + readError.toString())
+                Log.e(TAG, "Connection inputSream encountered an error while trying to read a specific size: " + readError.toString())
                 return null
             }
-            finally { readLock.unlock() }
         }
 
-        readLock.lock()
-        try
-        {
-            val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-            val remainingBytes = buffer.drop(size).toByteArray()
+        val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+        val remainingBytes = buffer.drop(size).toByteArray()
 
-            buffer = remainingBytes
-            return readBytes
-        }
-        finally { readLock.unlock() }
+        buffer = remainingBytes
+        return readBytes
     }
 
     fun write(string: String): Boolean
@@ -150,6 +208,20 @@ class TransmissionConnection(var connection: Socket)
     fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
         return false
+    }
+
+    private fun networkWrite(data: ByteArray): Boolean
+    {
+        try
+        {
+            outputStream.write(data)
+            return true
+        }
+        catch (writeError: Exception)
+        {
+            Log.e(TAG, "Error while attempting to write data to the network: " + writeError.toString())
+            return false
+        }
     }
 }
 

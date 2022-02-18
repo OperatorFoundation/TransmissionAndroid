@@ -1,6 +1,8 @@
 package org.operatorfoundation.transmission
 
 import android.util.Log
+import java.io.InputStream
+import java.io.OutputStream
 import java.lang.Exception
 import java.net.*
 import java.util.UUID.randomUUID
@@ -16,12 +18,16 @@ class TransmissionConnection(var connection: Socket)
     //val states: BlockingQueue<Boolean> = BlockingQueue()
     val id: String
     var buffer = ByteArray(1)
+    var inputStream: InputStream
+    var outputStream: OutputStream
 
 
     init
     {
         Log.d(TAG, "init TransmissionConnection called")
         id = randomUUID().toString() // FIXME: Original Swift implementation uses the socket's file descriptor. Kotlin Sockets do not have this
+        inputStream = connection.getInputStream()
+        outputStream = connection.getOutputStream()
     }
 
     constructor(host:String, port: Int, type: ConnectionType = ConnectionType.tcp) : this(Socket())
@@ -105,7 +111,30 @@ class TransmissionConnection(var connection: Socket)
 
     fun netwokRead(size: Int): ByteArray?
     {
-        return null
+        while (buffer.size < size)
+        {
+            readLock.lock()
+
+            try
+            { inputStream.read(buffer, buffer.size, size) }
+            catch (readError: Exception)
+            {
+                Log.e(TAG, "Connection inputSream encountered an error while trying to read: " + readError.toString())
+                return null
+            }
+            finally { readLock.unlock() }
+        }
+
+        readLock.lock()
+        try
+        {
+            val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+            val remainingBytes = buffer.drop(size).toByteArray()
+
+            buffer = remainingBytes
+            return readBytes
+        }
+        finally { readLock.unlock() }
     }
 
     fun write(string: String): Boolean

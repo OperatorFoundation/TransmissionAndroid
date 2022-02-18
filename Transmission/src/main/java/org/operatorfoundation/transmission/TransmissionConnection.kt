@@ -170,7 +170,64 @@ class TransmissionConnection(var connection: Socket)
         readLock.lock()
         try
         {
-            return null
+            var maybeLength: Int? = null
+
+            // FIXME: get bounded length for each case, convert to an int and set as the value of maybeData
+            when(prefixSizeInBits)
+            {
+                8 ->
+                {
+                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
+
+                    if (maybeLengthData == null)
+                    {
+                        Log.d(TAG, "Failed to read uint8 length prefix.")
+                        return null
+                    }
+                }
+                16 ->
+                {
+                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
+
+                    if (maybeLengthData == null)
+                    {
+                        Log.d(TAG, "Failed to read uint16 length prefix.")
+                        return null
+                    }
+                }
+                32 ->
+                {
+                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
+
+                    if (maybeLengthData == null)
+                    {
+                        Log.d(TAG, "Failed to read uint32 length prefix.")
+                        return null
+                    }
+                }
+                64 ->
+                {
+                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
+
+                    if (maybeLengthData == null)
+                    {
+                        Log.d(TAG, "Failed to read uint64 length prefix.")
+                        return null
+                    }
+                }
+                else -> return null
+            }
+
+            if (maybeLength == null)
+            {
+                return null
+            }
+            else
+            {
+                val maybeReadData = netwokRead(maybeLength)
+
+                return maybeReadData
+            }
         }
         finally { readLock.unlock() }
     }

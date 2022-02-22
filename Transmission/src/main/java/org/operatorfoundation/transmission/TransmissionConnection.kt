@@ -1,37 +1,32 @@
 package org.operatorfoundation.transmission
 
-import android.util.Log
 import java.io.InputStream
 import java.io.OutputStream
 import java.lang.Exception
 import java.net.*
+import java.nio.ByteBuffer
 import java.util.UUID.randomUUID
-import java.util.concurrent.BlockingQueue
-import java.util.concurrent.locks.ReentrantReadWriteLock
+import java.util.logging.Level
+import java.util.logging.Logger
 import kotlin.math.min
 
-class TransmissionConnection(var connection: Socket)
+class TransmissionConnection(var connection: Socket, val logger: Logger?)
 {
     private val TAG = "TransmissionConnection" // Use this when Logging e.g. Log.d(TAG, "init TransmissionConnection called")
-    private val reentrantReadWriteLock = ReentrantReadWriteLock()
-    private val readLock = reentrantReadWriteLock.readLock()
-    private val writeLock = reentrantReadWriteLock.writeLock()
-    //val states: BlockingQueue<Boolean> = BlockingQueue()
     val id: String
     var buffer = ByteArray(1)
     var inputStream: InputStream
     var outputStream: OutputStream
 
-
     init
     {
-        Log.d(TAG, "init TransmissionConnection called")
-        id = randomUUID().toString() // FIXME: Original Swift implementation uses the socket's file descriptor. Kotlin Sockets do not have this
+        logger?.log(Level.FINE, "init TransmissionConnection called")
+        id = randomUUID().toString()
         inputStream = connection.getInputStream()
         outputStream = connection.getOutputStream()
     }
 
-    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.tcp) : this(Socket())
+    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.tcp, logger: Logger?) : this(Socket(), logger)
     {
         when (type)
         {
@@ -42,77 +37,72 @@ class TransmissionConnection(var connection: Socket)
                     val socketAddress = InetSocketAddress(host, port)
                     connection.connect(socketAddress)
                 }
-                catch (error: Exception) {
-                    Log.e(TAG, "The socket failed to connect with the provided host and port. ")
+                catch (error: Exception)
+                {
+                    logger?.log(Level.SEVERE, "The socket failed to connect with the provided host and port. ")
                     return
                 }
             }
 
             // FIXME: UDP
-            ConnectionType.udp -> Log.e(TAG, "UDP connections are not currently supported.")
+            ConnectionType.udp -> logger?.log(Level.SEVERE, "UDP connections are not currently supported.")
         }
     }
 
     // Reads exactly size bytes
-    fun read(size: Int): ByteArray?
+    @Synchronized fun read(size: Int): ByteArray?
     {
-        readLock.lock()
-        try
+        if (size < 1)
         {
-            if (size < 1)
-            {
-                Log.e(TAG, "Requested a read size less than 1.")
-                return null
-            }
-            else if (size <= buffer.size)
-            {
-                val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-                val remainingBytes = buffer.drop(size).toByteArray()
+            logger?.log(Level.WARNING, "Requested a read size less than 1.")
+            return null
+        }
+        else if (size <= buffer.size)
+        {
+            val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+            val remainingBytes = buffer.drop(size).toByteArray()
 
-                buffer = remainingBytes
-                return readBytes
-            }
-            else
-            {
-                val maybeData = netwokRead(size)
+            buffer = remainingBytes
+            return readBytes
+        }
+        else
+        {
+            val maybeData = netwokRead(size)
 
-                if (maybeData != null)
+            if (maybeData != null)
+            {
+                buffer += maybeData
+
+                if (size <= buffer.size)
                 {
-                    buffer += maybeData
+                    val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                    val remainingBytes = buffer.drop(size).toByteArray()
 
-                    if (size <= buffer.size)
-                    {
-                        val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-                        val remainingBytes = buffer.drop(size).toByteArray()
-
-                        buffer = remainingBytes
-                        return readBytes
-                    }
-                    else
-                    {
-                        Log.e(TAG, "Requested a read for more data than what was available in the buffer.")
-                        return null
-                    }
+                    buffer = remainingBytes
+                    return readBytes
                 }
                 else
                 {
-                    Log.e(TAG,"Failed to read data from the netowrk.")
+                    logger?.log(Level.WARNING, "Requested a read for more data than what was available in the buffer.")
                     return null
                 }
             }
+            else
+            {
+                logger?.log(Level.WARNING, "Failed to read data from the network.")
+                return null
+            }
         }
-        finally { readLock.unlock() }
     }
 
     // Reads up to maxSize bytes
-    fun readMaxSize(maxSize: Int): ByteArray?
+    @Synchronized fun readMaxSize(maxSize: Int): ByteArray?
     {
-        readLock.lock()
         try
         {
             if (maxSize < 1)
             {
-                Log.e(TAG, "Requested a max read size less than 1.")
+                logger?.log(Level.WARNING, "Requested a max read size less than 1.")
                 return null
             }
 
@@ -139,7 +129,7 @@ class TransmissionConnection(var connection: Socket)
 
                 if (bytesReadCount <= 0)
                 {
-                    Log.d(TAG, "tried to read data from the network and got nothing.")
+                    //Log.d(TAG, "tried to read data from the network and got nothing.")
                     return null
                 }
                 else if (bytesReadCount < maxSize) // We initialized maybeData to be max size, trim off the excess 0's if we read fewer bytes than that
@@ -159,77 +149,71 @@ class TransmissionConnection(var connection: Socket)
         }
         catch (readError: Exception)
         {
-            Log.e(TAG, "Connection inputSream encountered an error while trying to read: " + readError.toString())
+            //Log.e(TAG, "Connection inputStream encountered an error while trying to read: " + readError.toString())
             return null
         }
-        finally { readLock.unlock() }
     }
 
-    fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
+    @Synchronized fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
     {
-        readLock.lock()
-        try
+        val maybeLength: Int?
+
+        when(prefixSizeInBits)
         {
-            var maybeLength: Int? = null
-
-            // FIXME: get bounded length for each case, convert to an int and set as the value of maybeData
-            when(prefixSizeInBits)
+            8 ->
             {
-                8 ->
-                {
-                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
+                val maybeLengthData = netwokRead(prefixSizeInBits/8)
 
-                    if (maybeLengthData == null)
-                    {
-                        Log.d(TAG, "Failed to read uint8 length prefix.")
-                        return null
-                    }
-                }
-                16 ->
+                if (maybeLengthData == null)
                 {
-                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
-
-                    if (maybeLengthData == null)
-                    {
-                        Log.d(TAG, "Failed to read uint16 length prefix.")
-                        return null
-                    }
+                    //Log.d(TAG, "Failed to read uint8 length prefix.")
+                    return null
                 }
-                32 ->
-                {
-                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
 
-                    if (maybeLengthData == null)
-                    {
-                        Log.d(TAG, "Failed to read uint32 length prefix.")
-                        return null
-                    }
-                }
-                64 ->
-                {
-                    val maybeLengthData = netwokRead(prefixSizeInBits/8)
-
-                    if (maybeLengthData == null)
-                    {
-                        Log.d(TAG, "Failed to read uint64 length prefix.")
-                        return null
-                    }
-                }
-                else -> return null
+                maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
             }
-
-            if (maybeLength == null)
+            16 ->
             {
-                return null
-            }
-            else
-            {
-                val maybeReadData = netwokRead(maybeLength)
+                val maybeLengthData = netwokRead(prefixSizeInBits/8)
 
-                return maybeReadData
+                if (maybeLengthData == null)
+                {
+                    //Log.d(TAG, "Failed to read uint16 length prefix.")
+                    return null
+                }
+
+                maybeLength = ByteBuffer.wrap(maybeLengthData).getShort().toInt()
             }
+            32 ->
+            {
+                val maybeLengthData = netwokRead(prefixSizeInBits/8)
+
+                if (maybeLengthData == null)
+                {
+                    //Log.d(TAG, "Failed to read uint32 length prefix.")
+                    return null
+                }
+
+                maybeLength = ByteBuffer.wrap(maybeLengthData).getInt()
+            }
+            64 ->
+            {
+                val maybeLengthData = netwokRead(prefixSizeInBits/8)
+
+                if (maybeLengthData == null)
+                {
+                    //Log.d(TAG, "Failed to read uint64 length prefix.")
+                    return null
+                }
+
+                maybeLength = ByteBuffer.wrap(maybeLengthData).getLong().toInt()
+            }
+            else -> return null
         }
-        finally { readLock.unlock() }
+
+        val maybeReadData = netwokRead(maybeLength)
+
+        return maybeReadData
     }
 
     private fun netwokRead(size: Int): ByteArray?
@@ -240,7 +224,7 @@ class TransmissionConnection(var connection: Socket)
             { inputStream.read(buffer, buffer.size, size) }
             catch (readError: Exception)
             {
-                Log.e(TAG, "Connection inputSream encountered an error while trying to read a specific size: " + readError.toString())
+                //Log.e(TAG, "Connection inputSream encountered an error while trying to read a specific size: " + readError.toString())
                 return null
             }
         }
@@ -252,73 +236,51 @@ class TransmissionConnection(var connection: Socket)
         return readBytes
     }
 
-    fun write(string: String): Boolean
+    @Synchronized fun write(string: String): Boolean
     {
-        writeLock.lock()
-        try
-        {
-            val data = string.toByteArray()
-            val success = networkWrite(data)
-
-            return success
-        }
-        finally { writeLock.unlock() }
+        val data = string.toByteArray()
+        return networkWrite(data)
     }
 
-    fun write(data: ByteArray): Boolean
+    @Synchronized fun write(data: ByteArray): Boolean
     {
-        writeLock.lock()
-        try
-        {
-            val success = networkWrite(data)
-            return success
-        }
-        finally { writeLock.unlock() }
+        return networkWrite(data)
     }
 
-    fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
+    @Synchronized fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
-        writeLock.lock()
-        try
+        val messageSize = data.size
+        val messageSizeBytes: ByteBuffer
+
+        when(prefixSizeInBits)
         {
-            var messageSize = data.size
-            var maybemessageSizeData: ByteArray? = null
-
-            // FIXME: get bounded length for each case, convert to an int and set as the value of maybeData
-            when(prefixSizeInBits)
+            8 ->
             {
-                8 ->
-                {
-
-                }
-                16 ->
-                {
-
-                }
-                32 ->
-                {
-
-                }
-                64 ->
-                {
-
-                }
-                else -> return false
+                messageSizeBytes = ByteBuffer.allocate(1)
+                messageSizeBytes.put(messageSize.toByte())
             }
-
-            if (maybemessageSizeData == null)
+            16 ->
             {
-                return false
+                messageSizeBytes = ByteBuffer.allocate(2)
+                messageSizeBytes.putShort(messageSize.toShort())
             }
-            else
+            32 ->
             {
-                val atomicData = maybemessageSizeData + data
-                val success = networkWrite(atomicData)
-
-                return success
+                messageSizeBytes = ByteBuffer.allocate(4)
+                messageSizeBytes.putInt(messageSize)
             }
+            64 ->
+            {
+                messageSizeBytes = ByteBuffer.allocate(8)
+                messageSizeBytes.putLong(messageSize.toLong())
+            }
+            else -> return false
         }
-        finally { writeLock.unlock() }
+
+        val atomicData = messageSizeBytes.array() + data
+        val success = networkWrite(atomicData)
+
+        return success
     }
 
     private fun networkWrite(data: ByteArray): Boolean
@@ -330,7 +292,7 @@ class TransmissionConnection(var connection: Socket)
         }
         catch (writeError: Exception)
         {
-            Log.e(TAG, "Error while attempting to write data to the network: " + writeError.toString())
+            //Log.e(TAG, "Error while attempting to write data to the network: " + writeError.toString())
             return false
         }
     }

@@ -12,11 +12,10 @@ import kotlin.math.min
 
 class TransmissionConnection(var connection: Socket, val logger: Logger?)
 {
-    private val TAG = "TransmissionConnection" // Use this when Logging e.g. Log.d(TAG, "init TransmissionConnection called")
     val id: String
-    var buffer = ByteArray(1)
-    var inputStream: InputStream
-    var outputStream: OutputStream
+    private var buffer = ByteArray(1)
+    private var inputStream: InputStream
+    private var outputStream: OutputStream
 
     init
     {
@@ -26,11 +25,11 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
         outputStream = connection.getOutputStream()
     }
 
-    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.tcp, logger: Logger?) : this(Socket(), logger)
+    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.TCP, logger: Logger?) : this(Socket(), logger)
     {
         when (type)
         {
-            ConnectionType.tcp ->
+            ConnectionType.TCP ->
             {
                 try
                 {
@@ -45,7 +44,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
             }
 
             // FIXME: UDP
-            ConnectionType.udp -> logger?.log(Level.SEVERE, "UDP connections are not currently supported.")
+            ConnectionType.UDP -> logger?.log(Level.SEVERE, "UDP connections are not currently supported.")
         }
     }
 
@@ -129,7 +128,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
 
                 if (bytesReadCount <= 0)
                 {
-                    //Log.d(TAG, "tried to read data from the network and got nothing.")
+                    logger?.log(Level.WARNING, "tried to read data from the network and got nothing.")
                     return null
                 }
                 else if (bytesReadCount < maxSize) // We initialized maybeData to be max size, trim off the excess 0's if we read fewer bytes than that
@@ -149,71 +148,76 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
         }
         catch (readError: Exception)
         {
-            //Log.e(TAG, "Connection inputStream encountered an error while trying to read: " + readError.toString())
+            logger?.log(Level.SEVERE, "Connection inputStream encountered an error while trying to read: $readError")
             return null
         }
     }
 
-    @Synchronized fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
-    {
+    @Synchronized
+    fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray? {
         val maybeLength: Int?
 
-        when(prefixSizeInBits)
-        {
-            8 ->
-            {
-                val maybeLengthData = netwokRead(prefixSizeInBits/8)
+        when (prefixSizeInBits) {
+            8 -> {
+                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
 
-                if (maybeLengthData == null)
-                {
-                    //Log.d(TAG, "Failed to read uint8 length prefix.")
+                if (maybeLengthData == null) {
+                    logger?.log(
+                        Level.WARNING,
+                        "Failed to read the 8 bit length prefix from the network."
+                    )
                     return null
                 }
 
                 maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
             }
-            16 ->
-            {
-                val maybeLengthData = netwokRead(prefixSizeInBits/8)
+            16 -> {
+                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
 
-                if (maybeLengthData == null)
-                {
-                    //Log.d(TAG, "Failed to read uint16 length prefix.")
+                if (maybeLengthData == null) {
+                    logger?.log(
+                        Level.WARNING,
+                        "Failed to read the 16 bit length prefix from the network."
+                    )
                     return null
                 }
 
-                maybeLength = ByteBuffer.wrap(maybeLengthData).getShort().toInt()
+                maybeLength = ByteBuffer.wrap(maybeLengthData).short.toInt()
             }
-            32 ->
-            {
-                val maybeLengthData = netwokRead(prefixSizeInBits/8)
+            32 -> {
+                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
 
-                if (maybeLengthData == null)
-                {
-                    //Log.d(TAG, "Failed to read uint32 length prefix.")
+                if (maybeLengthData == null) {
+                    logger?.log(
+                        Level.WARNING,
+                        "Failed to read the 32 bit length prefix from the network."
+                    )
                     return null
                 }
 
-                maybeLength = ByteBuffer.wrap(maybeLengthData).getInt()
+                maybeLength = ByteBuffer.wrap(maybeLengthData).int
             }
-            64 ->
-            {
-                val maybeLengthData = netwokRead(prefixSizeInBits/8)
+            64 -> {
+                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
 
-                if (maybeLengthData == null)
-                {
-                    //Log.d(TAG, "Failed to read uint64 length prefix.")
+                if (maybeLengthData == null) {
+                    logger?.log(
+                        Level.WARNING,
+                        "Failed to read the 64 bit length prefix from the network."
+                    )
                     return null
                 }
 
-                maybeLength = ByteBuffer.wrap(maybeLengthData).getLong().toInt()
+                maybeLength = ByteBuffer.wrap(maybeLengthData).long.toInt()
             }
-            else -> return null
+            else ->
+            {
+                logger?.log(Level.SEVERE, "Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+                return null
+            }
         }
 
-        val maybeReadData = netwokRead(maybeLength)
-
-        return maybeReadData
+        return netwokRead(maybeLength)
     }
 
     private fun netwokRead(size: Int): ByteArray?
@@ -224,7 +228,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
             { inputStream.read(buffer, buffer.size, size) }
             catch (readError: Exception)
             {
-                //Log.e(TAG, "Connection inputSream encountered an error while trying to read a specific size: " + readError.toString())
+                logger?.log(Level.SEVERE, "Connection inputSream encountered an error while trying to read a specific size: $readError")
                 return null
             }
         }
@@ -247,59 +251,58 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
         return networkWrite(data)
     }
 
-    @Synchronized fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
+    @Synchronized
+    fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
         val messageSize = data.size
         val messageSizeBytes: ByteBuffer
 
-        when(prefixSizeInBits)
-        {
-            8 ->
-            {
+        when (prefixSizeInBits) {
+            8 -> {
                 messageSizeBytes = ByteBuffer.allocate(1)
                 messageSizeBytes.put(messageSize.toByte())
             }
-            16 ->
-            {
+            16 -> {
                 messageSizeBytes = ByteBuffer.allocate(2)
                 messageSizeBytes.putShort(messageSize.toShort())
             }
-            32 ->
-            {
+            32 -> {
                 messageSizeBytes = ByteBuffer.allocate(4)
                 messageSizeBytes.putInt(messageSize)
             }
-            64 ->
-            {
+            64 -> {
                 messageSizeBytes = ByteBuffer.allocate(8)
                 messageSizeBytes.putLong(messageSize.toLong())
             }
-            else -> return false
+            else ->
+            {
+                logger?.log(Level.SEVERE, "Unable to complete a write request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+                return false
+            }
         }
 
         val atomicData = messageSizeBytes.array() + data
-        val success = networkWrite(atomicData)
 
-        return success
+        return networkWrite(atomicData)
     }
 
     private fun networkWrite(data: ByteArray): Boolean
     {
-        try
+        return try
         {
             outputStream.write(data)
-            return true
+            true
         }
         catch (writeError: Exception)
         {
-            //Log.e(TAG, "Error while attempting to write data to the network: " + writeError.toString())
-            return false
+            logger?.log(Level.SEVERE, "Error while attempting to write data to the network: $writeError")
+            false
         }
     }
 }
 
 enum class ConnectionType
 {
-    tcp,
-    udp
+    TCP,
+    UDP
 }

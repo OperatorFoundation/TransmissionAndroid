@@ -10,7 +10,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.math.min
 
-class TransmissionConnection(var connection: Socket, val logger: Logger?)
+class TransmissionConnection(var connection: Socket, val logger: Logger?) : Connection
 {
     val id: String
     private var buffer = ByteArray(1)
@@ -49,7 +49,8 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
     }
 
     // Reads exactly size bytes
-    @Synchronized fun read(size: Int): ByteArray?
+    @Synchronized
+    override fun read(size: Int): ByteArray?
     {
         if (size < 1)
         {
@@ -66,7 +67,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
         }
         else
         {
-            val maybeData = netwokRead(size)
+            val maybeData = networkRead(size)
 
             if (maybeData != null)
             {
@@ -95,7 +96,8 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
     }
 
     // Reads up to maxSize bytes
-    @Synchronized fun readMaxSize(maxSize: Int): ByteArray?
+    @Synchronized
+    override fun readMaxSize(maxSize: Int): ByteArray?
     {
         try
         {
@@ -154,12 +156,13 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
     }
 
     @Synchronized
-    fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray? {
+    override fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
+    {
         val maybeLength: Int?
 
         when (prefixSizeInBits) {
             8 -> {
-                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
+                val maybeLengthData = networkRead(prefixSizeInBits / 8)
 
                 if (maybeLengthData == null) {
                     logger?.log(
@@ -172,7 +175,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
                 maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
             }
             16 -> {
-                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
+                val maybeLengthData = networkRead(prefixSizeInBits / 8)
 
                 if (maybeLengthData == null) {
                     logger?.log(
@@ -185,7 +188,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
                 maybeLength = ByteBuffer.wrap(maybeLengthData).short.toInt()
             }
             32 -> {
-                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
+                val maybeLengthData = networkRead(prefixSizeInBits / 8)
 
                 if (maybeLengthData == null) {
                     logger?.log(
@@ -198,7 +201,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
                 maybeLength = ByteBuffer.wrap(maybeLengthData).int
             }
             64 -> {
-                val maybeLengthData = netwokRead(prefixSizeInBits / 8)
+                val maybeLengthData = networkRead(prefixSizeInBits / 8)
 
                 if (maybeLengthData == null) {
                     logger?.log(
@@ -217,10 +220,10 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
             }
         }
 
-        return netwokRead(maybeLength)
+        return networkRead(maybeLength)
     }
 
-    private fun netwokRead(size: Int): ByteArray?
+    private fun networkRead(size: Int): ByteArray?
     {
         while (buffer.size < size)
         {
@@ -228,7 +231,7 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
             { inputStream.read(buffer, buffer.size, size) }
             catch (readError: Exception)
             {
-                logger?.log(Level.SEVERE, "Connection inputSream encountered an error while trying to read a specific size: $readError")
+                logger?.log(Level.SEVERE, "Connection inputStream encountered an error while trying to read a specific size: $readError")
                 return null
             }
         }
@@ -240,19 +243,21 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
         return readBytes
     }
 
-    @Synchronized fun write(string: String): Boolean
+    @Synchronized
+    override fun write(string: String): Boolean
     {
         val data = string.toByteArray()
         return networkWrite(data)
     }
 
-    @Synchronized fun write(data: ByteArray): Boolean
+    @Synchronized
+    override fun write(data: ByteArray): Boolean
     {
         return networkWrite(data)
     }
 
     @Synchronized
-    fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
+    override fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
         val messageSize = data.size
         val messageSizeBytes: ByteBuffer
@@ -299,10 +304,9 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?)
             false
         }
     }
-}
 
-enum class ConnectionType
-{
-    TCP,
-    UDP
+    fun close()
+    {
+        connection.close()
+    }
 }

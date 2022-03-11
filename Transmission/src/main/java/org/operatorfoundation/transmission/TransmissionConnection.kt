@@ -10,7 +10,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.math.min
 
-class TransmissionConnection(var connection: Socket, val logger: Logger?) : Connection
+class TransmissionConnection(var connection: Socket, type: ConnectionType = ConnectionType.TCP, val logger: Logger?) : Connection
 {
     val id: String
     private var buffer = ByteArray(1)
@@ -25,28 +25,28 @@ class TransmissionConnection(var connection: Socket, val logger: Logger?) : Conn
         outputStream = connection.getOutputStream()
     }
 
-    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.TCP, logger: Logger?) : this(Socket(), logger)
-    {
-        when (type)
-        {
-            ConnectionType.TCP ->
-            {
-                try
-                {
-                    val socketAddress = InetSocketAddress(host, port)
-                    connection.connect(socketAddress)
-                }
-                catch (error: Exception)
-                {
-                    logger?.log(Level.SEVERE, "The socket failed to connect with the provided host and port. ")
-                    return
-                }
-            }
-
-            // FIXME: UDP
-            ConnectionType.UDP -> logger?.log(Level.SEVERE, "UDP connections are not currently supported.")
-        }
-    }
+//    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.TCP, logger: Logger?) : this(Socket(), logger)
+//    {
+//        when (type)
+//        {
+//            ConnectionType.TCP ->
+//            {
+//                try
+//                {
+//                    val socketAddress = InetSocketAddress(host, port)
+//                    connection.connect(socketAddress)
+//                }
+//                catch (error: Exception)
+//                {
+//                    logger?.log(Level.SEVERE, "The socket failed to connect with the provided host and port. ")
+//                    return
+//                }
+//            }
+//
+//            // FIXME: UDP
+//            ConnectionType.UDP -> logger?.log(Level.SEVERE, "UDP connections are not currently supported.")
+//        }
+//    }
 
     // Reads exactly size bytes
     @Synchronized

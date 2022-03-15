@@ -10,43 +10,76 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.math.min
 
-class TransmissionConnection(var connection: Socket, type: ConnectionType = ConnectionType.TCP, val logger: Logger?) : Connection
+class TransmissionConnection(var logger: Logger?) : Connection
 {
     val id: String
+    var connectionType: ConnectionType = ConnectionType.TCP
     private var buffer = ByteArray(1)
-    private var inputStream: InputStream
-    private var outputStream: OutputStream
+
+    var udpConnection: DatagramSocket? = null
+    var tcpConnection: Socket? = null
+    private var inputStream: InputStream? = null
+    private var outputStream: OutputStream? = null
 
     init
     {
         logger?.log(Level.FINE, "init TransmissionConnection called")
         id = randomUUID().toString()
-        inputStream = connection.getInputStream()
-        outputStream = connection.getOutputStream()
     }
 
-//    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.TCP, logger: Logger?) : this(Socket(), logger)
-//    {
-//        when (type)
-//        {
-//            ConnectionType.TCP ->
-//            {
-//                try
-//                {
-//                    val socketAddress = InetSocketAddress(host, port)
-//                    connection.connect(socketAddress)
-//                }
-//                catch (error: Exception)
-//                {
-//                    logger?.log(Level.SEVERE, "The socket failed to connect with the provided host and port. ")
-//                    return
-//                }
-//            }
-//
-//            // FIXME: UDP
-//            ConnectionType.UDP -> logger?.log(Level.SEVERE, "UDP connections are not currently supported.")
-//        }
-//    }
+    constructor(host:String, port: Int, type: ConnectionType = ConnectionType.TCP, logger: Logger?) : this(logger)
+    {
+        when (type)
+        {
+            ConnectionType.TCP ->
+            {
+                try
+                {
+                    val socketAddress = InetSocketAddress(host, port)
+                    this.tcpConnection = Socket()
+                    this.tcpConnection!!.connect(socketAddress)
+                    this.inputStream = tcpConnection!!.getInputStream()
+                    this.outputStream = tcpConnection!!.getOutputStream()
+                }
+                catch (error: Exception)
+                {
+                    logger?.log(Level.SEVERE, "The socket failed to create a tcp connection with the provided host and port. ")
+                    return
+                }
+            }
+
+            ConnectionType.UDP ->
+            {
+                try
+                {
+                    val socketAddress = InetSocketAddress(host, port)
+                    this.connectionType = ConnectionType.UDP
+                    this.udpConnection = DatagramSocket()
+                    this.udpConnection!!.connect(socketAddress)
+                }
+                catch (error: Exception)
+                {
+                    logger?.log(Level.SEVERE, "The socket failed to create a udp connection with the provided host and port. ")
+                    return
+                }
+            }
+        }
+    }
+
+    // Use this when you have already created a socket and connect() has been called
+    constructor(tcpConnection: Socket, logger: Logger?) : this(logger)
+    {
+        this.tcpConnection = tcpConnection
+        inputStream = tcpConnection.getInputStream()
+        outputStream = tcpConnection.getOutputStream()
+    }
+
+    constructor(udpConnection: DatagramSocket, logger: Logger?) : this(logger)
+    {
+        this.connectionType = ConnectionType.UDP
+        this.udpConnection = udpConnection
+    }
+
 
     // Reads exactly size bytes
     @Synchronized
@@ -126,7 +159,33 @@ class TransmissionConnection(var connection: Socket, type: ConnectionType = Conn
             {
                 // The buffer was empty go get more data
                 var maybeData = ByteArray(maxSize)
-                val bytesReadCount = inputStream.read(maybeData)
+                val bytesReadCount: Int
+
+                when(connectionType)
+                {
+                    ConnectionType.UDP ->
+                    {
+                        if (udpConnection == null)
+                        {
+                            logger?.log(Level.SEVERE, "Tried to receive data but our udpConnection does not exist.")
+                            return null
+                        }
+
+                        val datagramPacket = DatagramPacket(maybeData, maxSize)
+                        udpConnection!!.receive(datagramPacket)
+                        bytesReadCount = datagramPacket.length
+                    }
+                    ConnectionType.TCP ->
+                    {
+                        if (inputStream == null)
+                        {
+                            logger?.log(Level.SEVERE, "Tried to read on a tcp connection that has no input stream.")
+                            return null
+                        }
+
+                        bytesReadCount = inputStream!!.read(maybeData)
+                    }
+                }
 
                 if (bytesReadCount <= 0)
                 {
@@ -228,7 +287,32 @@ class TransmissionConnection(var connection: Socket, type: ConnectionType = Conn
         while (buffer.size < size)
         {
             try
-            { inputStream.read(buffer, buffer.size, size) }
+            {
+                when (connectionType)
+                {
+                    ConnectionType.TCP ->
+                    {
+                        if (inputStream == null)
+                        {
+                            logger?.log(Level.FINE, "Tried to call networkRead() on a tcp connection that has no input stream.")
+                            return null
+                        }
+
+                        inputStream!!.read(buffer, buffer.size, size)
+                    }
+                    ConnectionType.UDP ->
+                    {
+                        if (udpConnection == null)
+                        {
+                            logger?.log(Level.FINE, "Tried to call networkRead() on a null udpConnection.")
+                            return null
+                        }
+
+                        val datagramPacket = DatagramPacket(buffer, buffer.size, size)
+                        udpConnection!!.receive(datagramPacket)
+                    }
+                }
+            }
             catch (readError: Exception)
             {
                 logger?.log(Level.SEVERE, "Connection inputStream encountered an error while trying to read a specific size: $readError")
@@ -293,20 +377,51 @@ class TransmissionConnection(var connection: Socket, type: ConnectionType = Conn
 
     private fun networkWrite(data: ByteArray): Boolean
     {
-        return try
+        try
         {
-            outputStream.write(data)
-            true
+            when (connectionType)
+            {
+                ConnectionType.TCP ->
+                {
+                    if (outputStream == null)
+                    {
+                        logger?.log(Level.FINE, "Called networkWrite() when out tcpConnection has a null outputStream")
+                        return false
+                    }
+
+                    outputStream!!.write(data)
+                    return true
+                }
+                ConnectionType.UDP ->
+                {
+                    if (udpConnection == null)
+                    {
+                        logger?.log(Level.FINE, "Tried to call networkWrite() on a null udpConnection.")
+                        return false
+                    }
+
+                    val datagramPacket = DatagramPacket(data, data.size)
+                    udpConnection!!.send(datagramPacket)
+                    return true
+                }
+            }
         }
         catch (writeError: Exception)
         {
             logger?.log(Level.SEVERE, "Error while attempting to write data to the network: $writeError")
-            false
+            return false
         }
     }
 
     fun close()
     {
-        connection.close()
+        if (udpConnection != null)
+        {
+            udpConnection!!.close()
+        }
+        else if (tcpConnection != null)
+        {
+            tcpConnection!!.close()
+        }
     }
 }

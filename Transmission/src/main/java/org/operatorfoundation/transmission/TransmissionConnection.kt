@@ -237,6 +237,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 val maybeLengthData = networkRead(prefixSizeInBits / 8)
 
                 if (maybeLengthData == null) {
+                    println("Failed to read the 16 bit length prefix from the network.")
                     logger?.log(
                         Level.WARNING,
                         "Failed to read the 16 bit length prefix from the network."
@@ -295,6 +296,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                         if (inputStream == null)
                         {
                             logger?.log(Level.FINE, "Tried to call networkRead() on a tcp connection that has no input stream.")
+                            println("Tried to call networkRead() on a tcp connection that has no input stream.")
                             return null
                         }
 
@@ -305,6 +307,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                         if (udpConnection == null)
                         {
                             logger?.log(Level.FINE, "Tried to call networkRead() on a null udpConnection.")
+                            println("Tried to call networkRead() on a null udpConnection.")
                             return null
                         }
 
@@ -316,6 +319,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             catch (readError: Exception)
             {
                 logger?.log(Level.SEVERE, "Connection inputStream encountered an error while trying to read a specific size: $readError")
+                println("Connection inputStream encountered an error while trying to read a specific size: $readError")
                 return null
             }
         }
@@ -324,6 +328,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
         val remainingBytes = buffer.drop(size).toByteArray()
 
         buffer = remainingBytes
+
+        println("TransmissionAndroid NetworkRead returned ${readBytes.size} bytes.")
         return readBytes
     }
 

@@ -14,7 +14,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 {
     val id: String
     var connectionType: ConnectionType = ConnectionType.TCP
-    private var buffer = ByteArray(1)
+    private var buffer = ByteArray(0)
 
     var udpConnection: DatagramSocket? = null
     var tcpConnection: Socket? = null
@@ -285,7 +285,10 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkRead(size: Int): ByteArray?
     {
-        while (buffer.size < size)
+        var networkBuffer = ByteArray(2048)
+        var networkBufferSize = 0
+
+        while (networkBufferSize < size)
         {
             try
             {
@@ -300,7 +303,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                             return null
                         }
 
-                        inputStream!!.read(buffer, buffer.size, size)
+                        networkBufferSize += inputStream!!.read(networkBuffer, networkBufferSize, size)
                     }
                     ConnectionType.UDP ->
                     {
@@ -311,7 +314,10 @@ class TransmissionConnection(var logger: Logger?) : Connection
                             return null
                         }
 
+                        // FIXME: Keep track of buffer size correctly
                         val datagramPacket = DatagramPacket(buffer, buffer.size, size)
+
+                        // FIXME: Keep track of buffer size correctly
                         udpConnection!!.receive(datagramPacket)
                     }
                 }
@@ -324,10 +330,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
         }
 
-        val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-        val remainingBytes = buffer.drop(size).toByteArray()
-
-        buffer = remainingBytes
+        val readBytes = networkBuffer.dropLast(buffer.size - networkBufferSize).toByteArray()
 
         println("TransmissionAndroid NetworkRead returned ${readBytes.size} bytes.")
         return readBytes

@@ -209,7 +209,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
         }
         catch (readError: Exception)
         {
-            logger?.log(Level.SEVERE, "Connection inputStream encountered an error while trying to read: $readError")
+            logger?.log(Level.SEVERE, "TransmissionAndroid.readMaxSize: Connection inputStream encountered an error while trying to read: $readError")
             return null
         }
     }
@@ -217,6 +217,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
     @Synchronized
     override fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
     {
+        println("TransmissionAndroid.readWithLengthPrefix() called")
         val maybeLength: Int?
 
         when (prefixSizeInBits) {
@@ -285,6 +286,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkRead(size: Int): ByteArray?
     {
+        println("TransmissionAndroid.networkRead(size: $size) called")
         var networkBuffer = ByteArray(2048)
         var networkBufferSize = 0
 
@@ -298,19 +300,20 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     {
                         if (inputStream == null)
                         {
-                            logger?.log(Level.FINE, "Tried to call networkRead() on a tcp connection that has no input stream.")
-                            println("Tried to call networkRead() on a tcp connection that has no input stream.")
+                            logger?.log(Level.FINE, "TransmissionAndroid.networkRead: tcp connection that has no input stream.")
+                            println("TransmissionAndroid.networkRead: tcp connection that has no input stream.")
                             return null
                         }
 
+                        println("TransmissionAndroid.networkRead: TCP - calling inputStream.read requested: $size, inBuffer: $networkBufferSize")
                         networkBufferSize += inputStream!!.read(networkBuffer, networkBufferSize, size)
                     }
                     ConnectionType.UDP ->
                     {
                         if (udpConnection == null)
                         {
-                            logger?.log(Level.FINE, "Tried to call networkRead() on a null udpConnection.")
-                            println("Tried to call networkRead() on a null udpConnection.")
+                            logger?.log(Level.FINE, "TransmissionAndroid.networkRead: null udpConnection.")
+                            println("TransmissionAndroid.networkRead: null udpConnection.")
                             return null
                         }
 
@@ -324,15 +327,15 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
             catch (readError: Exception)
             {
-                logger?.log(Level.SEVERE, "Connection inputStream encountered an error while trying to read a specific size: $readError")
-                println("Connection inputStream encountered an error while trying to read a specific size: $readError")
+                logger?.log(Level.SEVERE, "TransmissionAndroid.networkRead: Connection inputStream encountered an error while trying to read a specific size: $readError")
+                println("TransmissionAndroid.networkRead: Connection inputStream encountered an error while trying to read a specific size: $readError")
                 return null
             }
         }
 
         val readBytes = networkBuffer.dropLast(buffer.size - networkBufferSize).toByteArray()
 
-        println("TransmissionAndroid NetworkRead returned ${readBytes.size} bytes.")
+        println("TransmissionAndroid.networkRead: returning ${readBytes.size} bytes.")
         return readBytes
     }
 

@@ -352,29 +352,35 @@ class TransmissionConnection(var logger: Logger?) : Connection
     @Synchronized
     override fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
+        println("TransmissionConnection.writeWithLengthPrefix() called")
         val messageSize = data.size
         val messageSizeBytes: ByteBuffer
 
         when (prefixSizeInBits) {
             8 -> {
+                println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 8")
                 messageSizeBytes = ByteBuffer.allocate(1)
                 messageSizeBytes.put(messageSize.toByte())
             }
             16 -> {
+                println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 16")
                 messageSizeBytes = ByteBuffer.allocate(2)
                 messageSizeBytes.putShort(messageSize.toShort())
             }
             32 -> {
+                println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 32")
                 messageSizeBytes = ByteBuffer.allocate(4)
                 messageSizeBytes.putInt(messageSize)
             }
             64 -> {
+                println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 64")
                 messageSizeBytes = ByteBuffer.allocate(8)
                 messageSizeBytes.putLong(messageSize.toLong())
             }
             else ->
             {
-                logger?.log(Level.SEVERE, "Unable to complete a write request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+                print("TransmissionConnection.writeWithLengthPrefix: Unable to complete a write request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+                logger?.log(Level.SEVERE, "TransmissionConnection.writeWithLengthPrefix: Unable to complete a write request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
                 return false
             }
         }
@@ -386,14 +392,18 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkWrite(data: ByteArray): Boolean
     {
+        println("TransmissionConnection.networkWrite() called")
         try
         {
             when (connectionType)
             {
                 ConnectionType.TCP ->
                 {
+                    println("TransmissionConnection.networkWrite: tcpConnection")
+
                     if (outputStream == null)
                     {
+                        println("TransmissionConnection.networkWrite: error - tcpConnection has a null outputStream")
                         logger?.log(Level.FINE, "Called networkWrite() when out tcpConnection has a null outputStream")
                         return false
                     }
@@ -403,8 +413,11 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 }
                 ConnectionType.UDP ->
                 {
+                    println("TransmissionConnection.networkWrite: udpConnection")
+
                     if (udpConnection == null)
                     {
+                        println("TransmissionConnection.networkWrite: error - null udpConnection")
                         logger?.log(Level.FINE, "Tried to call networkWrite() on a null udpConnection.")
                         return false
                     }
@@ -417,6 +430,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
         }
         catch (writeError: Exception)
         {
+            println("TransmissionConnection.networkWrite: Error while attempting to write data to the network: $writeError")
             logger?.log(Level.SEVERE, "Error while attempting to write data to the network: $writeError")
             return false
         }

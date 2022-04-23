@@ -217,58 +217,59 @@ class TransmissionConnection(var logger: Logger?) : Connection
     @Synchronized
     override fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
     {
-        println("TransmissionAndroid.readWithLengthPrefix() called")
+        println("TransmissionAndroid.readWithLengthPrefix(prefixSizeInBits: $prefixSizeInBits) called")
         val maybeLength: Int?
+        val prefixSizeInBytes = prefixSizeInBits / 8
 
-        when (prefixSizeInBits) {
-            8 -> {
-                val maybeLengthData = networkRead(prefixSizeInBits / 8)
+        when (prefixSizeInBits)
+        {
+            8 ->
+            {
+                val maybeLengthData = networkRead(prefixSizeInBytes)
 
-                if (maybeLengthData == null) {
-                    logger?.log(
-                        Level.WARNING,
-                        "Failed to read the 8 bit length prefix from the network."
-                    )
+                if (maybeLengthData == null)
+                {
+                    println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 8 bit length prefix from the network.")
+                    logger?.log( Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 8 bit length prefix from the network." )
                     return null
                 }
 
                 maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
             }
-            16 -> {
-                val maybeLengthData = networkRead(prefixSizeInBits / 8)
+            16 ->
+            {
+                val maybeLengthData = networkRead(prefixSizeInBytes)
 
-                if (maybeLengthData == null) {
-                    println("Failed to read the 16 bit length prefix from the network.")
-                    logger?.log(
-                        Level.WARNING,
-                        "Failed to read the 16 bit length prefix from the network."
-                    )
+                if (maybeLengthData == null)
+                {
+                    println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 16 bit length prefix from the network.")
+                    logger?.log(Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 16 bit length prefix from the network.")
                     return null
                 }
 
                 maybeLength = ByteBuffer.wrap(maybeLengthData).short.toInt()
             }
-            32 -> {
-                val maybeLengthData = networkRead(prefixSizeInBits / 8)
+            32 ->
+            {
+                val maybeLengthData = networkRead(prefixSizeInBytes)
 
-                if (maybeLengthData == null) {
-                    logger?.log(
-                        Level.WARNING,
-                        "Failed to read the 32 bit length prefix from the network."
-                    )
+                if (maybeLengthData == null)
+                {
+                    println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 32 bit length prefix from the network.")
+                    logger?.log(Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 32 bit length prefix from the network.")
                     return null
                 }
 
                 maybeLength = ByteBuffer.wrap(maybeLengthData).int
             }
-            64 -> {
-                val maybeLengthData = networkRead(prefixSizeInBits / 8)
+            64 ->
+            {
+                val maybeLengthData = networkRead(prefixSizeInBytes)
 
-                if (maybeLengthData == null) {
-                    logger?.log(
-                        Level.WARNING,
-                        "Failed to read the 64 bit length prefix from the network."
-                    )
+                if (maybeLengthData == null)
+                {
+                    println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 64 bit length prefix from the network.")
+                    logger?.log(Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 64 bit length prefix from the network.")
                     return null
                 }
 
@@ -276,7 +277,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
             else ->
             {
-                logger?.log(Level.SEVERE, "Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+                println("TransmissionAndroid.readWithLengthPrefix: Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+                logger?.log(Level.SEVERE, "TransmissionAndroid.readWithLengthPrefix: Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
                 return null
             }
         }
@@ -307,6 +309,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
                         println("TransmissionAndroid.networkRead: TCP - calling inputStream.read requested: $size, inBuffer: $networkBufferSize")
                         networkBufferSize += inputStream!!.read(networkBuffer, networkBufferSize, size)
+                        println("TransmissionAndroid.networkRead: TCP - returned from inputStream.read, inBuffer: $networkBufferSize")
                     }
                     ConnectionType.UDP ->
                     {

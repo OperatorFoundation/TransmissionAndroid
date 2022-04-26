@@ -363,7 +363,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
         return networkWrite(data)
     }
 
-    @Synchronized
+    //@Synchronized
     override fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
         println("TransmissionConnection.writeWithLengthPrefix() called")
@@ -406,14 +406,14 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkWrite(data: ByteArray): Boolean
     {
-        println("TransmissionConnection.networkWrite() called")
+        println("TransmissionConnection.networkWrite() called with ${data.size} bytes.")
         try
         {
             when (connectionType)
             {
                 ConnectionType.TCP ->
                 {
-                    println("TransmissionConnection.networkWrite: tcpConnection")
+                    println("TransmissionConnection.networkWrite: this is a tcpConnection")
 
                     if (tcpConnection == null)
                     {
@@ -428,7 +428,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 }
                 ConnectionType.UDP ->
                 {
-                    println("TransmissionConnection.networkWrite: udpConnection")
+                    println("TransmissionConnection.networkWrite: this is a udpConnection")
 
                     if (udpConnection == null)
                     {
@@ -438,7 +438,10 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     }
 
                     val datagramPacket = DatagramPacket(data, data.size)
+
+                    println("TransmissionConnection.networkWrite: calling udpConnection!!.send() with ${datagramPacket.length} bytes.")
                     udpConnection!!.send(datagramPacket)
+                    println("TransmissionConnection.networkWrite: returned from udpConnection!!.send().")
                     return true
                 }
             }

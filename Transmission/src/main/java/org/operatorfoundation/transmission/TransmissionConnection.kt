@@ -330,10 +330,24 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
         }
 
-        val readBytes = networkBuffer.dropLast(buffer.size - networkBufferSize).toByteArray()
+        println("buffer.count - ${buffer.count()}, networkBufferSize - $networkBufferSize, networkBuffer.count - ${networkBuffer.count()}")
 
-        println("TransmissionAndroid.networkRead: returning ${readBytes.size} bytes.")
-        return readBytes
+        if (buffer.count() > networkBufferSize)
+        {
+            val readUntil = buffer.count() - networkBufferSize
+            println("reading from networkBuffer up to last $readUntil elements")
+            val readBytes = networkBuffer.dropLast(readUntil).toByteArray()
+            val remainingBytes = networkBuffer.drop(size).toByteArray()
+
+            buffer = remainingBytes
+
+            println("TransmissionAndroid.networkRead: returning ${readBytes.size} bytes.")
+            return readBytes
+        }
+        else
+        {
+            return networkBuffer
+        }
     }
 
     @Synchronized

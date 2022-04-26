@@ -16,7 +16,8 @@ class ExampleUnitTest
     @Test
     fun testWriteWithLengthPrefix()
     {
-        val transmissionConnection = TransmissionConnection("", 1234, ConnectionType.TCP, null)
+        // FIXME: Valid Server IP
+        val transmissionConnection = TransmissionConnection("164.92.71.230", 1234, ConnectionType.TCP, null)
         val newPacketString = "0b"
         val pingPacket = hexStringToByteArray(newPacketString)
 
@@ -33,41 +34,9 @@ class ExampleUnitTest
         assertTrue(messageSent)
 
         val maybeBytes = transmissionConnection.readWithLengthPrefix(16)
+
+        println("Read ${maybeBytes?.size} bytes")
         assertNotNull(maybeBytes)
-    }
-
-    var writeCoroutineScope = CoroutineScope(Job() + Dispatchers.Default)
-
-    @Test
-    fun testWriteWithLengthPrefixCoroutine()
-    {
-        val transmissionConnection = TransmissionConnection("", 1234, ConnectionType.TCP, null)
-        val newPacketString = "450000258ad100004011ef41c0a801e79fcb9e5adf5104d200115d4268656c6c6f6f6f6f0a"
-        val pingPacket = hexStringToByteArray(newPacketString)
-
-        println("TransmissionTest: Calling writeMessage")
-        runBlocking { writeMessage(transmissionConnection, pingPacket) }
-    }
-
-    suspend fun writeMessage(transmissionConnection: TransmissionConnection, data: ByteArray)
-    {
-        println("TransmissionTest: preparing to send a message to the transmission connection.")
-
-        val messageSent = withContext(writeCoroutineScope.coroutineContext) {
-            transmissionConnection.writeWithLengthPrefix(
-                data,
-                16
-            )
-        }
-
-        println("TransmissionTest: sent a message to the transmission connection. Success - $messageSent")
-
-        if (messageSent == false)
-        {
-            println("TransmissionTest: failed to write a message.")
-        }
-
-        assertTrue(messageSent)
     }
 
     fun hexStringToByteArray(hexString: String): ByteArray

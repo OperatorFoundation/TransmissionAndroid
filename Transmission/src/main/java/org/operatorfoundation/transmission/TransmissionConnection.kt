@@ -285,8 +285,13 @@ class TransmissionConnection(var logger: Logger?) : Connection
         println("TransmissionAndroid.networkRead(size: $size) called")
         var networkBuffer = ByteArray(2048)
         var networkBufferSize = 0
+        val bytesToTake = min(size, buffer.size)
+        var result = buffer.dropLast(buffer.size - bytesToTake).toByteArray()
+        buffer = buffer.drop(bytesToTake).toByteArray()
 
-        while (networkBufferSize < size)
+        val numberToRead = size - result.size
+
+        while (networkBufferSize < numberToRead)
         {
             try
             {
@@ -330,24 +335,19 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
         }
 
-        println("buffer.count - ${buffer.count()}, networkBufferSize - $networkBufferSize, networkBuffer.count - ${networkBuffer.count()}")
+        println("buffer.size - ${buffer.size}, networkBufferSize - $networkBufferSize, networkBuffer.size - ${networkBuffer.size}")
 
-        if (buffer.count() > networkBufferSize)
+        val numberToAdd = min(numberToRead, networkBufferSize)
+        val numberLeftOver = networkBufferSize - numberToAdd
+        val bytesToAdd = networkBuffer.dropLast(networkBuffer.size - numberToAdd).toByteArray()
+        result += bytesToAdd
+
+        if (networkBufferSize - numberToAdd > 0)
         {
-            val readUntil = buffer.count() - networkBufferSize
-            println("reading from networkBuffer up to last $readUntil elements")
-            val readBytes = networkBuffer.dropLast(readUntil).toByteArray()
-            val remainingBytes = networkBuffer.drop(size).toByteArray()
-
-            buffer = remainingBytes
-
-            println("TransmissionAndroid.networkRead: returning ${readBytes.size} bytes.")
-            return readBytes
+            buffer += networkBuffer.drop(numberToAdd).dropLast(networkBuffer.size - numberLeftOver).toByteArray()
         }
-        else
-        {
-            return networkBuffer
-        }
+
+        return result
     }
 
     @Synchronized

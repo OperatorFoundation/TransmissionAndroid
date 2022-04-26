@@ -409,6 +409,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     }
 
                     tcpConnection!!.outputStream.write(data)
+                    tcpConnection!!.outputStream.flush()
                     return true
                 }
                 ConnectionType.UDP ->

@@ -1,7 +1,5 @@
 package org.operatorfoundation.transmission
 
-import java.io.InputStream
-import java.io.OutputStream
 import java.lang.Exception
 import java.net.*
 import java.nio.ByteBuffer
@@ -18,8 +16,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     var udpConnection: DatagramSocket? = null
     var tcpConnection: Socket? = null
-    private var inputStream: InputStream? = null
-    private var outputStream: OutputStream? = null
 
     init
     {
@@ -38,13 +34,12 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     val socketAddress = InetSocketAddress(host, port)
                     this.tcpConnection = Socket()
                     this.tcpConnection!!.connect(socketAddress)
-                    this.inputStream = tcpConnection!!.getInputStream()
-                    this.outputStream = tcpConnection!!.getOutputStream()
                 }
                 catch (error: Exception)
                 {
-                    logger?.log(Level.SEVERE, "The socket failed to create a tcp connection with the provided host and port. ")
-                    return
+                    println("The socket failed to create a tcp connection with the provided host and port: $error")
+                    logger?.log(Level.SEVERE, "The socket failed to create a tcp connection with the provided host and port: $error ")
+                    throw error
                 }
             }
 
@@ -59,8 +54,9 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 }
                 catch (error: Exception)
                 {
-                    logger?.log(Level.SEVERE, "The socket failed to create a udp connection with the provided host and port. ")
-                    return
+                    println("The socket failed to create a udp connection with the provided host and port: $error")
+                    logger?.log(Level.SEVERE, "The socket failed to create a udp connection with the provided host and port: $error ")
+                    throw error
                 }
             }
         }
@@ -70,8 +66,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
     constructor(tcpConnection: Socket, logger: Logger?) : this(logger)
     {
         this.tcpConnection = tcpConnection
-        inputStream = tcpConnection.getInputStream()
-        outputStream = tcpConnection.getOutputStream()
     }
 
     constructor(udpConnection: DatagramSocket, logger: Logger?) : this(logger)
@@ -106,18 +100,18 @@ class TransmissionConnection(var logger: Logger?) : Connection
             {
                 buffer += maybeData
 
-                if (size <= buffer.size)
+                return if (size <= buffer.size)
                 {
                     val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
                     val remainingBytes = buffer.drop(size).toByteArray()
 
                     buffer = remainingBytes
-                    return readBytes
+                    readBytes
                 }
                 else
                 {
                     logger?.log(Level.WARNING, "Requested a read for more data than what was available in the buffer.")
-                    return null
+                    null
                 }
             }
             else
@@ -177,13 +171,13 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     }
                     ConnectionType.TCP ->
                     {
-                        if (inputStream == null)
+                        if (tcpConnection == null)
                         {
-                            logger?.log(Level.SEVERE, "Tried to read on a tcp connection that has no input stream.")
+                            logger?.log(Level.SEVERE, "Tried to read on a null tcp connection.")
                             return null
                         }
 
-                        bytesReadCount = inputStream!!.read(maybeData)
+                        bytesReadCount = tcpConnection!!.inputStream!!.read(maybeData)
                     }
                 }
 
@@ -300,15 +294,15 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 {
                     ConnectionType.TCP ->
                     {
-                        if (inputStream == null)
+                        if (tcpConnection == null)
                         {
-                            logger?.log(Level.FINE, "TransmissionAndroid.networkRead: tcp connection that has no input stream.")
-                            println("TransmissionAndroid.networkRead: tcp connection that has no input stream.")
+                            logger?.log(Level.FINE, "TransmissionAndroid.networkRead: networkRead(size: ) called on null tcp connection.")
+                            println("TransmissionAndroid.networkRead: networkRead(size: ) called on null tcp connection.")
                             return null
                         }
 
                         println("TransmissionAndroid.networkRead: TCP - calling inputStream.read requested: $size, inBuffer: $networkBufferSize")
-                        networkBufferSize += inputStream!!.read(networkBuffer, networkBufferSize, size)
+                        networkBufferSize += tcpConnection!!.inputStream.read(networkBuffer, networkBufferSize, size)
                         println("TransmissionAndroid.networkRead: TCP - returned from inputStream.read, inBuffer: $networkBufferSize")
                     }
                     ConnectionType.UDP ->
@@ -407,14 +401,14 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 {
                     println("TransmissionConnection.networkWrite: tcpConnection")
 
-                    if (outputStream == null)
+                    if (tcpConnection == null)
                     {
-                        println("TransmissionConnection.networkWrite: error - tcpConnection has a null outputStream")
-                        logger?.log(Level.FINE, "Called networkWrite() when out tcpConnection has a null outputStream")
+                        println("TransmissionConnection.networkWrite: error - tcpConnection is null")
+                        logger?.log(Level.FINE, "Called networkWrite() on a null tcpConnection")
                         return false
                     }
 
-                    outputStream!!.write(data)
+                    tcpConnection!!.outputStream.write(data)
                     return true
                 }
                 ConnectionType.UDP ->

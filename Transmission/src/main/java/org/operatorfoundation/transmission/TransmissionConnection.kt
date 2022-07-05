@@ -433,6 +433,9 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     }
 
                     tcpConnection!!.outputStream.write(data)
+
+                    println("TransmissionAndroid.TransmissionConnection: Wrote to output stream: ")
+                    println(data.toHexString())
                     tcpConnection!!.outputStream.flush()
                     return true
                 }
@@ -462,6 +465,10 @@ class TransmissionConnection(var logger: Logger?) : Connection
             logger?.log(Level.SEVERE, "Error while attempting to write data to the network: $writeError")
             return false
         }
+    }
+
+    fun ByteArray.toHexString() : String {
+        return this.joinToString("") { it.toString(16) }
     }
 
     fun close()

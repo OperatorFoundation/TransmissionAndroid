@@ -390,7 +390,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
     override fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
         synchronized(writeLock) {
-            println("TransmissionConnection.writeWithLengthPrefix() called")
             val messageSize = data.size
             val messageSizeBytes: ByteBuffer
 
@@ -434,15 +433,12 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkWrite(data: ByteArray): Boolean
     {
-        println("TransmissionConnection.networkWrite() called with ${data.size} bytes.")
         try
         {
             when (connectionType)
             {
                 ConnectionType.TCP ->
                 {
-                    println("TransmissionConnection.networkWrite: this is a tcpConnection")
-
                     if (tcpConnection == null)
                     {
                         logger?.log(Level.FINE, "Called networkWrite() on a null tcpConnection")
@@ -459,8 +455,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 }
                 ConnectionType.UDP ->
                 {
-                    println("TransmissionConnection.networkWrite: this is a udpConnection")
-
                     if (udpConnection == null)
                     {
                         logger?.log(Level.FINE, "Tried to call networkWrite() on a null udpConnection.")

@@ -20,6 +20,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
     var udpConnection: DatagramSocket? = null
     var tcpConnection: Socket? = null
 
+    var connectionClosed = true
+
     init
     {
         logger?.log(Level.FINE, "init TransmissionConnection called")
@@ -37,6 +39,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     val socketAddress = InetSocketAddress(host, port)
                     this.tcpConnection = Socket()
                     this.tcpConnection!!.connect(socketAddress)
+                    this.connectionClosed = false
                 }
                 catch (error: Exception)
                 {
@@ -54,6 +57,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     this.connectionType = ConnectionType.UDP
                     this.udpConnection = DatagramSocket()
                     this.udpConnection!!.connect(socketAddress)
+                    this.connectionClosed = false
                 }
                 catch (error: Exception)
                 {
@@ -69,12 +73,14 @@ class TransmissionConnection(var logger: Logger?) : Connection
     constructor(tcpConnection: Socket, logger: Logger?) : this(logger)
     {
         this.tcpConnection = tcpConnection
+        this.connectionClosed = false
     }
 
     constructor(udpConnection: DatagramSocket, logger: Logger?) : this(logger)
     {
         this.connectionType = ConnectionType.UDP
         this.udpConnection = udpConnection
+        this.connectionClosed = false
     }
 
 
@@ -308,20 +314,29 @@ class TransmissionConnection(var logger: Logger?) : Connection
                         if (tcpConnection == null)
                         {
                             logger?.log(Level.FINE, "TransmissionAndroid.networkRead: networkRead(size: ) called on null tcp connection.")
-                            println("TransmissionAndroid.networkRead: networkRead(size: ) called on null tcp connection.")
+                            close()
                             return null
                         }
 
-                        println("TransmissionAndroid.networkRead: TCP - calling inputStream.read requested: $size, inBuffer: $networkBufferSize")
-                        networkBufferSize += tcpConnection!!.inputStream.read(networkBuffer, networkBufferSize, size)
-                        println("TransmissionAndroid.networkRead: TCP - returned from inputStream.read, inBuffer: $networkBufferSize")
+                        val readResult = tcpConnection!!.inputStream.read(networkBuffer, networkBufferSize, size)
+
+                        if (readResult > 0)
+                        {
+                            networkBufferSize += readResult
+                            println("TransmissionAndroid.networkRead: TCP - returned from inputStream.read, inBuffer: $networkBufferSize")
+                        }
+                        else
+                        {
+                            close()
+                            return null
+                        }
                     }
                     ConnectionType.UDP ->
                     {
                         if (udpConnection == null)
                         {
                             logger?.log(Level.FINE, "TransmissionAndroid.networkRead: null udpConnection.")
-                            println("TransmissionAndroid.networkRead: null udpConnection.")
+                            close()
                             return null
                         }
 
@@ -336,7 +351,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             catch (readError: Exception)
             {
                 logger?.log(Level.SEVERE, "TransmissionAndroid.networkRead: Connection inputStream encountered an error while trying to read a specific size: $readError")
-                println("TransmissionAndroid.networkRead: Connection inputStream encountered an error while trying to read a specific size: $readError")
+                close()
                 return null
             }
         }
@@ -386,9 +401,11 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     messageSizeBytes.put(messageSize.toByte())
                 }
                 16 -> {
-                    println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 16")
+
                     messageSizeBytes = ByteBuffer.allocate(2)
                     messageSizeBytes.putShort(messageSize.toShort())
+                    println("TransmissionConnection.writeWithLengthPrefix(16), message size: $messageSize ")
+
                 }
                 32 -> {
                     println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 32")
@@ -409,6 +426,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
 
             val atomicData = messageSizeBytes.array() + data
+            println("Message size bytes + data: ${atomicData.toHexString()}")
 
             return networkWrite(atomicData)
         }
@@ -427,8 +445,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
                     if (tcpConnection == null)
                     {
-                        println("TransmissionConnection.networkWrite: error - tcpConnection is null")
                         logger?.log(Level.FINE, "Called networkWrite() on a null tcpConnection")
+                        close()
                         return false
                     }
 
@@ -445,8 +463,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
                     if (udpConnection == null)
                     {
-                        println("TransmissionConnection.networkWrite: error - null udpConnection")
                         logger?.log(Level.FINE, "Tried to call networkWrite() on a null udpConnection.")
+                        close()
                         return false
                     }
 
@@ -461,8 +479,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
         }
         catch (writeError: Exception)
         {
-            println("TransmissionConnection.networkWrite: Error while attempting to write data to the network: $writeError")
             logger?.log(Level.SEVERE, "Error while attempting to write data to the network: $writeError")
+            close()
             return false
         }
     }
@@ -481,5 +499,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
         {
             tcpConnection!!.close()
         }
+
+        connectionClosed = true
     }
 }

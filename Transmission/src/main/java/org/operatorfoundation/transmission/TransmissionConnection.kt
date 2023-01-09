@@ -132,6 +132,48 @@ class TransmissionConnection(var logger: Logger?) : Connection
         }
     }
 
+    // Reads exactly size bytes
+    override fun unsafeRead(size: Int): ByteArray?
+    {
+        if (size < 1)
+        {
+            logger?.log(Level.WARNING, "Requested a read size less than 1.")
+            return null
+        }
+        else if (size <= buffer.size)
+        {
+            val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+            val remainingBytes = buffer.drop(size).toByteArray()
+
+            buffer = remainingBytes
+            return readBytes
+        }
+        else {
+            val maybeData = networkRead(size)
+
+            if (maybeData != null) {
+                buffer += maybeData
+
+                return if (size <= buffer.size) {
+                    val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                    val remainingBytes = buffer.drop(size).toByteArray()
+
+                    buffer = remainingBytes
+                    readBytes
+                } else {
+                    logger?.log(
+                        Level.WARNING,
+                        "Requested a read for more data than what was available in the buffer."
+                    )
+                    null
+                }
+            } else {
+                logger?.log(Level.WARNING, "Failed to read data from the network.")
+                return null
+            }
+        }
+    }
+
     // Reads up to maxSize bytes
     override fun readMaxSize(maxSize: Int): ByteArray?
     {
@@ -222,73 +264,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
     override fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
     {
         synchronized(readLock) {
-            println("TransmissionAndroid.readWithLengthPrefix(prefixSizeInBits: $prefixSizeInBits) called")
-            val maybeLength: Int?
-            val prefixSizeInBytes = prefixSizeInBits / 8
-
-            when (prefixSizeInBits)
-            {
-                8 ->
-                {
-                    val maybeLengthData = networkRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 8 bit length prefix from the network.")
-                        logger?.log( Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 8 bit length prefix from the network." )
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
-                }
-                16 ->
-                {
-                    val maybeLengthData = networkRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 16 bit length prefix from the network.")
-                        logger?.log(Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 16 bit length prefix from the network.")
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).short.toInt()
-                }
-                32 ->
-                {
-                    val maybeLengthData = networkRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 32 bit length prefix from the network.")
-                        logger?.log(Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 32 bit length prefix from the network.")
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).int
-                }
-                64 ->
-                {
-                    val maybeLengthData = networkRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        println("TransmissionAndroid.readWithLengthPrefix: Failed to read the 64 bit length prefix from the network.")
-                        logger?.log(Level.WARNING, "TransmissionAndroid.readWithLengthPrefix: Failed to read the 64 bit length prefix from the network.")
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).long.toInt()
-                }
-                else ->
-                {
-                    println("TransmissionAndroid.readWithLengthPrefix: Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
-                    logger?.log(Level.SEVERE, "TransmissionAndroid.readWithLengthPrefix: Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
-                    return null
-                }
-            }
-
-            return networkRead(maybeLength)
+            return Transmission.readWithLengthPrefix(this, prefixSizeInBits, this.logger)
         }
     }
 
@@ -389,46 +365,21 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     override fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean
     {
-        synchronized(writeLock) {
-            val messageSize = data.size
-            val messageSizeBytes: ByteBuffer
+        return Transmission.writeWithLengthPrefix(this, data, prefixSizeInBits, this.logger)
+    }
 
-            when (prefixSizeInBits) {
-                8 -> {
-                    println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 8")
-                    messageSizeBytes = ByteBuffer.allocate(1)
-                    messageSizeBytes.put(messageSize.toByte())
-                }
-                16 -> {
-
-                    messageSizeBytes = ByteBuffer.allocate(2)
-                    messageSizeBytes.putShort(messageSize.toShort())
-                    println("TransmissionConnection.writeWithLengthPrefix(16), message size: $messageSize ")
-
-                }
-                32 -> {
-                    println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 32")
-                    messageSizeBytes = ByteBuffer.allocate(4)
-                    messageSizeBytes.putInt(messageSize)
-                }
-                64 -> {
-                    println("TransmissionConnection.writeWithLengthPrefix: prefixSizeInBits - 64")
-                    messageSizeBytes = ByteBuffer.allocate(8)
-                    messageSizeBytes.putLong(messageSize.toLong())
-                }
-                else ->
-                {
-                    print("TransmissionConnection.writeWithLengthPrefix: Unable to complete a write request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
-                    logger?.log(Level.SEVERE, "TransmissionConnection.writeWithLengthPrefix: Unable to complete a write request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
-                    return false
-                }
-            }
-
-            val atomicData = messageSizeBytes.array() + data
-            println("Message size bytes + data: ${atomicData.toHexString()}")
-
-            return networkWrite(atomicData)
+    override fun close()
+    {
+        if (udpConnection != null)
+        {
+            udpConnection!!.close()
         }
+        else if (tcpConnection != null)
+        {
+            tcpConnection!!.close()
+        }
+
+        connectionClosed = true
     }
 
     private fun networkWrite(data: ByteArray): Boolean
@@ -481,19 +432,5 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     fun ByteArray.toHexString() : String {
         return this.joinToString("") { it.toString(16) }
-    }
-
-    fun close()
-    {
-        if (udpConnection != null)
-        {
-            udpConnection!!.close()
-        }
-        else if (tcpConnection != null)
-        {
-            tcpConnection!!.close()
-        }
-
-        connectionClosed = true
     }
 }

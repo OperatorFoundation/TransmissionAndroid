@@ -327,6 +327,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             catch (readError: Exception)
             {
                 logger?.log(Level.SEVERE, "TransmissionAndroid.networkRead: Connection inputStream encountered an error while trying to read a specific size: $readError")
+                readError.printStackTrace()
                 close()
                 return null
             }

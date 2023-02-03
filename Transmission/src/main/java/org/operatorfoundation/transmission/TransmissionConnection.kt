@@ -1,5 +1,6 @@
 package org.operatorfoundation.transmission
 
+import org.operatorfoundation.transmission.Transmission.Companion.toHexString
 import java.lang.Exception
 import java.net.*
 import java.nio.ByteBuffer
@@ -87,46 +88,65 @@ class TransmissionConnection(var logger: Logger?) : Connection
     // Reads exactly size bytes
     override fun read(size: Int): ByteArray?
     {
-        synchronized(readLock) {
-            if (size < 1)
+        when(connectionType)
+        {
+            ConnectionType.UDP ->
             {
-                logger?.log(Level.WARNING, "Requested a read size less than 1.")
-                return null
-            }
-            else if (size <= buffer.size)
-            {
-                val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-                val remainingBytes = buffer.drop(size).toByteArray()
+                val maybeData = readMaxSize(size)
 
-                buffer = remainingBytes
-                return readBytes
-            }
-            else
-            {
-                val maybeData = networkRead(size)
-
-                if (maybeData != null)
+                if (maybeData != null && maybeData.size != size)
                 {
-                    buffer += maybeData
+                    logger?.log(Level.WARNING, "Received a read size (${maybeData.size}) different from the requested a read size ($size).")
+                    return null
+                }
 
-                    return if (size <= buffer.size)
+                return maybeData
+            }
+            ConnectionType.TCP ->
+            {
+                synchronized(readLock) {
+                    if (size < 1)
+                    {
+                        logger?.log(Level.WARNING, "Requested a read size less than 1.")
+                        return null
+                    }
+                    else if (size <= buffer.size)
                     {
                         val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
                         val remainingBytes = buffer.drop(size).toByteArray()
 
                         buffer = remainingBytes
-                        readBytes
+                        return readBytes
                     }
                     else
                     {
-                        logger?.log(Level.WARNING, "Requested a read for more data than what was available in the buffer.")
-                        null
+                        val maybeData = networkRead(size)
+
+                        if (maybeData != null)
+                        {
+                            buffer += maybeData
+
+                            return if (size <= buffer.size)
+                            {
+                                val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                                val remainingBytes = buffer.drop(size).toByteArray()
+
+                                buffer = remainingBytes
+                                readBytes
+                            }
+                            else
+                            {
+                                logger?.log(Level.WARNING, "Requested a read for more data than what was available in the buffer.")
+                                null
+                            }
+                        }
+                        else
+                        {
+                            logger?.log(Level.WARNING, "Failed to read data from the network.")
+                            close()
+                            return null
+                        }
                     }
-                }
-                else
-                {
-                    logger?.log(Level.WARNING, "Failed to read data from the network.")
-                    return null
                 }
             }
         }
@@ -177,7 +197,8 @@ class TransmissionConnection(var logger: Logger?) : Connection
     // Reads up to maxSize bytes
     override fun readMaxSize(maxSize: Int): ByteArray?
     {
-        synchronized(readLock) {
+        synchronized(readLock)
+        {
             try
             {
                 if (maxSize < 1)
@@ -214,18 +235,29 @@ class TransmissionConnection(var logger: Logger?) : Connection
                             if (udpConnection == null)
                             {
                                 logger?.log(Level.SEVERE, "Tried to receive data but our udpConnection does not exist.")
+                                close()
                                 return null
                             }
 
                             val datagramPacket = DatagramPacket(maybeData, maxSize)
                             udpConnection!!.receive(datagramPacket)
                             bytesReadCount = datagramPacket.length
+
+                            if (bytesReadCount > maxSize)
+                            {
+                                logger?.log(Level.SEVERE, "Tried to read more bytes than max requested size of $maxSize.")
+                                return null
+                            }
+
+                            // Do not continue on to buffer management with UDP connections
+                            return datagramPacket.data.sliceArray(0 until bytesReadCount)
                         }
                         ConnectionType.TCP ->
                         {
                             if (tcpConnection == null)
                             {
                                 logger?.log(Level.SEVERE, "Tried to read on a null tcp connection.")
+                                close()
                                 return null
                             }
 
@@ -236,6 +268,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     if (bytesReadCount <= 0)
                     {
                         logger?.log(Level.WARNING, "tried to read data from the network and got nothing.")
+                        close()
                         return null
                     }
                     else if (bytesReadCount < maxSize) // We initialized maybeData to be max size, trim off the excess 0's if we read fewer bytes than that
@@ -256,6 +289,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             catch (readError: Exception)
             {
                 logger?.log(Level.SEVERE, "TransmissionAndroid.readMaxSize: Connection inputStream encountered an error while trying to read: $readError")
+                close()
                 return null
             }
         }
@@ -263,8 +297,18 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     override fun readWithLengthPrefix(prefixSizeInBits: Int): ByteArray?
     {
-        synchronized(readLock) {
-            return Transmission.readWithLengthPrefix(this, prefixSizeInBits, this.logger)
+        when(connectionType) {
+            ConnectionType.UDP ->
+            {
+                logger?.log(Level.SEVERE, "TransmissionAndroid.readWithLengthPrefix: This function is not supported for UDP connections")
+                return null
+            }
+            ConnectionType.TCP ->
+            {
+                synchronized(readLock) {
+                    return Transmission.readWithLengthPrefix(this, prefixSizeInBits, this.logger)
+                }
+            }
         }
     }
 
@@ -309,18 +353,9 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     }
                     ConnectionType.UDP ->
                     {
-                        if (udpConnection == null)
-                        {
-                            logger?.log(Level.FINE, "TransmissionAndroid.networkRead: null udpConnection.")
-                            close()
-                            return null
-                        }
-
-                        // FIXME: Keep track of buffer size correctly
-                        val datagramPacket = DatagramPacket(buffer, buffer.size, size)
-
-                        // FIXME: Keep track of buffer size correctly
-                        udpConnection!!.receive(datagramPacket)
+                        logger?.log(Level.SEVERE, "TransmissionAndroid.networkRead: Network read is not available for UDP connections.")
+                        close()
+                        return null
                     }
                 }
             }

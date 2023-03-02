@@ -17,7 +17,7 @@ class ExampleUnitTest
     fun testWriteWithLengthPrefix()
     {
         // FIXME: Valid Server IP
-        val transmissionConnection = TransmissionConnection("164.92.71.230", 1234, ConnectionType.TCP, null)
+        val transmissionConnection = TransmissionConnection("8.8.8.8", 1234, ConnectionType.TCP, null)
         val newPacketString = "0b"
         val pingPacket = hexStringToByteArray(newPacketString)
 

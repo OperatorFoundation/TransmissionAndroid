@@ -1,17 +1,27 @@
 package org.operatorfoundation.transmission
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.hardware.usb.UsbDeviceConnection
+import android.widget.Toast
 import com.hoho.android.usbserial.driver.*
 
 class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection {
     companion object {
+        const val ACTION_USB_PERMISSION = "transmission.USB_PERMISSION"
         const val timeout = 100
 
         fun new(context: Context): SerialConnection {
             // Find all available drivers from attached devices.
             val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager?
+
+            if (manager == null) {
+                throw Exception("Unable to create USB Manager")
+            }
+
             val availableDrivers: List<UsbSerialDriver> =
                 UsbSerialProber.getDefaultProber().findAllDrivers(manager)
             if (availableDrivers.isEmpty()) {
@@ -20,7 +30,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
             // Open a connection to the first available driver.
             val driver: UsbSerialDriver = availableDrivers[0]
-            val connection = manager!!.openDevice(driver.device) ?: throw Exception("could not open serial port")
+            val connection = manager.openDevice(driver.device) ?: throw Exception("could not open serial port")
 
             // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
             val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)
@@ -111,6 +121,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     override fun writeWithLengthPrefix(data: ByteArray, prefixSizeInBits: Int): Boolean {
         return Transmission.writeWithLengthPrefix(this, data, prefixSizeInBits,null)
     }
+
 
     @Synchronized
     override fun close() {

@@ -11,7 +11,6 @@ import com.hoho.android.usbserial.driver.*
 
 class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection {
     companion object {
-        const val ACTION_USB_PERMISSION = "transmission.USB_PERMISSION"
         const val timeout = 100
 
         fun new(context: Context): SerialConnection {
@@ -41,6 +40,10 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             // Find all available drivers from attached devices.
             val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager?
 
+            if (manager == null) {
+                throw Exception("Unable to create USB Manager")
+            }
+
             val customProbeTable = ProbeTable()
             customProbeTable.addProduct(vendorID, productID, driverClass)
 //            customProbeTable.addProduct(0x1b4f, 0x0024, CdcAcmSerialDriver::class.java)
@@ -54,7 +57,16 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
             // Open a connection to the first available driver.
             val driver: UsbSerialDriver = availableDrivers[0]
-            val connection = manager!!.openDevice(driver.device) ?: throw Exception("could not open serial port")
+            val connection = manager.openDevice(driver.device) ?: throw Exception("could not open serial port")
+
+            // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
+            val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)
+            return SerialConnection(port0, connection)
+        }
+
+        fun new(context: Context, manager: UsbManager, driver: UsbSerialDriver): SerialConnection
+        {
+            val connection = manager.openDevice(driver.device) ?: throw Exception("could not open serial port")
 
             // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
             val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)

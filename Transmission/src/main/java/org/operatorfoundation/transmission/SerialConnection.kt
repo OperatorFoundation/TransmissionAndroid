@@ -15,11 +15,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
         fun new(context: Context): SerialConnection {
             // Find all available drivers from attached devices.
-            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager?
-
-            if (manager == null) {
-                throw Exception("Unable to create USB Manager")
-            }
+            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
             val availableDrivers: List<UsbSerialDriver> =
                 UsbSerialProber.getDefaultProber().findAllDrivers(manager)
@@ -38,11 +34,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
         fun new(context: Context, vendorID: Int, productID: Int, driverClass: Class<UsbSerialDriver>): SerialConnection {
             // Find all available drivers from attached devices.
-            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager?
-
-            if (manager == null) {
-                throw Exception("Unable to create USB Manager")
-            }
+            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
             val customProbeTable = ProbeTable()
             customProbeTable.addProduct(vendorID, productID, driverClass)
@@ -64,9 +56,20 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             return SerialConnection(port0, connection)
         }
 
-        fun new(context: Context, manager: UsbManager, driver: UsbSerialDriver): SerialConnection
+        fun new(context: Context, manager: UsbManager? = null, driver: UsbSerialDriver): SerialConnection
         {
-            val connection = manager.openDevice(driver.device) ?: throw Exception("could not open serial port")
+            val usbManager: UsbManager
+
+            if (manager != null)
+            {
+               usbManager = manager
+            }
+            else
+            {
+                usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+            }
+
+            val connection = usbManager.openDevice(driver.device) ?: throw Exception("could not open serial port")
 
             // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
             val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)

@@ -1,5 +1,6 @@
 package org.operatorfoundation.transmission
 
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -56,7 +57,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             return SerialConnection(port0, connection)
         }
 
-        fun new(context: Context, manager: UsbManager? = null, driver: UsbSerialDriver): SerialConnection
+        fun new(context: Context, manager: UsbManager? = null, driver: UsbSerialDriver, permissionIntent: PendingIntent): SerialConnection
         {
             val usbManager: UsbManager
 
@@ -68,6 +69,8 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             {
                 usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
             }
+
+            usbManager.requestPermission(driver.device, permissionIntent)
 
             val connection = usbManager.openDevice(driver.device) ?: throw Exception("could not open serial port")
 

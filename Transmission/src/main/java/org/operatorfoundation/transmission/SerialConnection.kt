@@ -1,41 +1,38 @@
 package org.operatorfoundation.transmission
 
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.hardware.usb.UsbDeviceConnection
-import android.widget.Toast
 import com.hoho.android.usbserial.driver.*
 
 class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection {
     companion object {
         const val timeout = 100
 
-        fun new(context: Context): SerialConnection {
+        fun new(context: Context, permissionIntent: PendingIntent): SerialConnection {
             // Find all available drivers from attached devices.
-            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+            val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
             val availableDrivers: List<UsbSerialDriver> =
-                UsbSerialProber.getDefaultProber().findAllDrivers(manager)
+                UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
             if (availableDrivers.isEmpty()) {
                 throw Exception("no serial ports")
             }
 
             // Open a connection to the first available driver.
             val driver: UsbSerialDriver = availableDrivers[0]
-            val connection = manager.openDevice(driver.device) ?: throw Exception("could not open serial port")
+            usbManager.requestPermission(driver.device, permissionIntent)
+            val connection = usbManager.openDevice(driver.device) ?: throw Exception("could not open serial port")
 
             // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
             val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)
             return SerialConnection(port0, connection)
         }
 
-        fun new(context: Context, vendorID: Int, productID: Int, driverClass: Class<UsbSerialDriver>): SerialConnection {
+        fun new(context: Context, vendorID: Int, productID: Int, driverClass: Class<UsbSerialDriver>, permissionIntent: PendingIntent): SerialConnection {
             // Find all available drivers from attached devices.
-            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+            val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
             val customProbeTable = ProbeTable()
             customProbeTable.addProduct(vendorID, productID, driverClass)
@@ -43,14 +40,15 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             val customUSBSerialProber = UsbSerialProber(customProbeTable)
 
             val availableDrivers: List<UsbSerialDriver> =
-                customUSBSerialProber.findAllDrivers(manager)
+                customUSBSerialProber.findAllDrivers(usbManager)
             if (availableDrivers.isEmpty()) {
                 throw Exception("no serial ports")
             }
 
             // Open a connection to the first available driver.
             val driver: UsbSerialDriver = availableDrivers[0]
-            val connection = manager.openDevice(driver.device) ?: throw Exception("could not open serial port")
+            usbManager.requestPermission(driver.device, permissionIntent)
+            val connection = usbManager.openDevice(driver.device) ?: throw Exception("could not open serial port")
 
             // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
             val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)
@@ -59,17 +57,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
         fun new(context: Context, manager: UsbManager? = null, driver: UsbSerialDriver, permissionIntent: PendingIntent): SerialConnection
         {
-            val usbManager: UsbManager
-
-            if (manager != null)
-            {
-               usbManager = manager
-            }
-            else
-            {
-                usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
-            }
-
+            val usbManager: UsbManager = manager ?: context.getSystemService(Context.USB_SERVICE) as UsbManager
             usbManager.requestPermission(driver.device, permissionIntent)
 
             val connection = usbManager.openDevice(driver.device) ?: throw Exception("could not open serial port")
@@ -91,11 +79,11 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     }
 
     @Synchronized
-    override fun read(size: Int): ByteArray? {
+    override fun read(size: Int): ByteArray {
         return this.unsafeRead(size)
     }
 
-    override fun unsafeRead(size: Int): ByteArray? {
+    override fun unsafeRead(size: Int): ByteArray {
         val bytes = ByteArray(size)
         val result = this.port.read(bytes, timeout)
 
@@ -107,7 +95,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     }
 
     @Synchronized
-    override fun readMaxSize(maxSize: Int): ByteArray? {
+    override fun readMaxSize(maxSize: Int): ByteArray {
         var bytes = ByteArray(maxSize)
         val result = this.port.read(bytes, timeout)
 

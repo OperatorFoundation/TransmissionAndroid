@@ -25,7 +25,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     init
     {
-        logger?.log(Level.FINE, "init TransmissionConnection called")
         id = randomUUID().toString()
     }
 
@@ -44,7 +43,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 }
                 catch (error: Exception)
                 {
-                    println("The socket failed to create a tcp connection with the provided host and port: $error")
+                    println("TransmissionConnection: The socket failed to create a tcp connection with the provided host and port: $error")
                     logger?.log(Level.SEVERE, "The socket failed to create a tcp connection with the provided host and port: $error ")
                     throw error
                 }
@@ -96,7 +95,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
                 if (maybeData != null && maybeData.size != size)
                 {
-                    logger?.log(Level.WARNING, "Received a read size (${maybeData.size}) different from the requested a read size ($size).")
+                    logger?.log(Level.WARNING, "TransmissionConnection: Received a read size (${maybeData.size}) different from the requested a read size ($size).")
                     return null
                 }
 
@@ -107,7 +106,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 synchronized(readLock) {
                     if (size < 1)
                     {
-                        logger?.log(Level.WARNING, "Requested a read size less than 1.")
+                        logger?.log(Level.WARNING, "TransmissionConnection: Requested a read size less than 1.")
                         return null
                     }
                     else if (size <= buffer.size)
@@ -136,13 +135,13 @@ class TransmissionConnection(var logger: Logger?) : Connection
                             }
                             else
                             {
-                                logger?.log(Level.WARNING, "Requested a read for more data than what was available in the buffer.")
+                                logger?.log(Level.WARNING, "TransmissionConnection: Requested a read for more data than what was available in the buffer.")
                                 null
                             }
                         }
                         else
                         {
-                            logger?.log(Level.WARNING, "Failed to read data from the network.")
+                            logger?.log(Level.WARNING, "TransmissionConnection: Failed to read data from the network.")
                             close()
                             return null
                         }
@@ -157,7 +156,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
     {
         if (size < 1)
         {
-            logger?.log(Level.WARNING, "Requested a read size less than 1.")
+            logger?.log(Level.WARNING, "TransmissionConnection: Requested a read size less than 1.")
             return null
         }
         else if (size <= buffer.size)
@@ -183,12 +182,12 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 } else {
                     logger?.log(
                         Level.WARNING,
-                        "Requested a read for more data than what was available in the buffer."
+                        "TransmissionConnection: Requested a read for more data than what was available in the buffer."
                     )
                     null
                 }
             } else {
-                logger?.log(Level.WARNING, "Failed to read data from the network.")
+                logger?.log(Level.WARNING, "TransmissionConnection: Failed to read data from the network.")
                 return null
             }
         }
@@ -203,7 +202,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             {
                 if (maxSize < 1)
                 {
-                    logger?.log(Level.WARNING, "Requested a max read size less than 1.")
+                    logger?.log(Level.WARNING, "TransmissionConnection: Requested a max read size less than 1.")
                     return null
                 }
 
@@ -234,7 +233,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                         {
                             if (udpConnection == null)
                             {
-                                logger?.log(Level.SEVERE, "Tried to receive data but our udpConnection does not exist.")
+                                logger?.log(Level.SEVERE, "TransmissionConnection: Tried to receive data but our udpConnection does not exist.")
                                 close()
                                 return null
                             }
@@ -245,7 +244,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
                             if (bytesReadCount > maxSize)
                             {
-                                logger?.log(Level.SEVERE, "Tried to read more bytes than max requested size of $maxSize.")
+                                logger?.log(Level.SEVERE, "TransmissionConnection: Tried to read more bytes than max requested size of $maxSize.")
                                 return null
                             }
 
@@ -256,7 +255,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                         {
                             if (tcpConnection == null)
                             {
-                                logger?.log(Level.SEVERE, "Tried to read on a null tcp connection.")
+                                logger?.log(Level.SEVERE, "TransmissionConnection: Tried to read on a null tcp connection.")
                                 close()
                                 return null
                             }
@@ -267,7 +266,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
                     if (bytesReadCount <= 0)
                     {
-                        logger?.log(Level.WARNING, "tried to read data from the network and got nothing.")
+                        logger?.log(Level.WARNING, "TransmissionConnection: tried to read data from the network and got nothing.")
                         close()
                         return null
                     }
@@ -288,7 +287,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
             catch (readError: Exception)
             {
-                logger?.log(Level.SEVERE, "TransmissionAndroid.readMaxSize: Connection inputStream encountered an error while trying to read: $readError")
+                logger?.log(Level.SEVERE, "TransmissionConnection: Connection inputStream encountered an error while trying to read: $readError")
                 close()
                 return null
             }
@@ -300,7 +299,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
         when(connectionType) {
             ConnectionType.UDP ->
             {
-                logger?.log(Level.SEVERE, "TransmissionAndroid.readWithLengthPrefix: This function is not supported for UDP connections")
+                logger?.log(Level.SEVERE, "TransmissionConnection: This function is not supported for UDP connections")
                 return null
             }
             ConnectionType.TCP ->
@@ -314,7 +313,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkRead(size: Int): ByteArray?
     {
-        println("TransmissionAndroid.networkRead(size: $size) called")
         var networkBuffer = ByteArray(2048)
         var networkBufferSize = 0
         val bytesToTake = min(size, buffer.size)
@@ -333,7 +331,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     {
                         if (tcpConnection == null)
                         {
-                            logger?.log(Level.FINE, "TransmissionAndroid.networkRead: networkRead(size: ) called on null tcp connection.")
+                            logger?.log(Level.FINE, "TransmissionConnection: networkRead(size: ) called on null tcp connection.")
                             close()
                             return null
                         }
@@ -343,7 +341,6 @@ class TransmissionConnection(var logger: Logger?) : Connection
                         if (readResult > 0)
                         {
                             networkBufferSize += readResult
-                            println("TransmissionAndroid.networkRead: TCP - returned from inputStream.read, inBuffer: $networkBufferSize")
                         }
                         else
                         {
@@ -353,7 +350,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
                     }
                     ConnectionType.UDP ->
                     {
-                        logger?.log(Level.SEVERE, "TransmissionAndroid.networkRead: Network read is not available for UDP connections.")
+                        logger?.log(Level.SEVERE, "TransmissionConnection: Network read is not available for UDP connections.")
                         close()
                         return null
                     }
@@ -361,14 +358,12 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
             catch (readError: Exception)
             {
-                logger?.log(Level.SEVERE, "TransmissionAndroid.networkRead: Connection inputStream encountered an error while trying to read a specific size: $readError")
+                logger?.log(Level.SEVERE, "TransmissionConnection: Connection inputStream encountered an error while trying to read a specific size: $readError")
                 readError.printStackTrace()
                 close()
                 return null
             }
         }
-
-        println("buffer.size - ${buffer.size}, networkBufferSize - $networkBufferSize, networkBuffer.size - ${networkBuffer.size}")
 
         val numberToAdd = min(numberToRead, networkBufferSize)
         val numberLeftOver = networkBufferSize - numberToAdd
@@ -428,15 +423,12 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 {
                     if (tcpConnection == null)
                     {
-                        logger?.log(Level.FINE, "Called networkWrite() on a null tcpConnection")
+                        logger?.log(Level.FINE, "TransmissionConnection: Called networkWrite() on a null tcpConnection")
                         close()
                         return false
                     }
 
                     tcpConnection!!.outputStream.write(data)
-
-                    println("TransmissionAndroid.TransmissionConnection: Wrote to output stream: ")
-                    println(data.toHexString())
                     tcpConnection!!.outputStream.flush()
                     return true
                 }
@@ -444,23 +436,21 @@ class TransmissionConnection(var logger: Logger?) : Connection
                 {
                     if (udpConnection == null)
                     {
-                        logger?.log(Level.FINE, "Tried to call networkWrite() on a null udpConnection.")
+                        logger?.log(Level.FINE, "TransmissionConnection: Tried to call networkWrite() on a null udpConnection.")
                         close()
                         return false
                     }
 
                     val datagramPacket = DatagramPacket(data, data.size)
 
-                    println("TransmissionConnection.networkWrite: calling udpConnection!!.send() with ${datagramPacket.length} bytes.")
                     udpConnection!!.send(datagramPacket)
-                    println("TransmissionConnection.networkWrite: returned from udpConnection!!.send().")
                     return true
                 }
             }
         }
         catch (writeError: Exception)
         {
-            logger?.log(Level.SEVERE, "Error while attempting to write data to the network: $writeError")
+            logger?.log(Level.SEVERE, "TransmissionConnection: Error while attempting to write data to the network: $writeError")
             close()
             return false
         }

@@ -88,7 +88,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         val result = this.port.read(bytes, timeout)
 
         if (result != size) {
-            throw Exception("read failed: $size bytes requested, only $result bytes read")
+            throw Exception("SerialConnection: read failed: $size bytes requested, only $result bytes read")
         }
 
         return bytes

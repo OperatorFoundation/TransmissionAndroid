@@ -313,6 +313,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
 
     private fun networkRead(size: Int): ByteArray?
     {
+        logger?.log(Level.FINE, "Network Read: (size: $size)")
         var networkBuffer = ByteArray(2048)
         var networkBufferSize = 0
         val bytesToTake = min(size, buffer.size)

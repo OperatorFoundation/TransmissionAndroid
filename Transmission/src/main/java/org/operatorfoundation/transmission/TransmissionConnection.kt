@@ -1,9 +1,7 @@
 package org.operatorfoundation.transmission
 
-import org.operatorfoundation.transmission.Transmission.Companion.toHexString
 import java.lang.Exception
 import java.net.*
-import java.nio.ByteBuffer
 import java.util.UUID.randomUUID
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -314,15 +312,11 @@ class TransmissionConnection(var logger: Logger?) : Connection
     private fun networkRead(size: Int): ByteArray?
     {
         logger?.log(Level.FINE, "Network Read: (size: $size)")
-        var networkBuffer = ByteArray(2048)
-        var networkBufferSize = 0
-        val bytesToTake = min(size, buffer.size)
-        var result = buffer.dropLast(buffer.size - bytesToTake).toByteArray()
-        buffer = buffer.drop(bytesToTake).toByteArray()
+        var networkBuffer = ByteArray(size)
+        var bytesRead = 0
 
-        val numberToRead = size - result.size
 
-        while (networkBufferSize < numberToRead)
+        while (bytesRead < size)
         {
             try
             {
@@ -337,11 +331,11 @@ class TransmissionConnection(var logger: Logger?) : Connection
                             return null
                         }
 
-                        val readResult = tcpConnection!!.inputStream.read(networkBuffer, networkBufferSize, size)
+                        val readResult = tcpConnection!!.inputStream.read(networkBuffer, bytesRead, size - bytesRead)
 
                         if (readResult > 0)
                         {
-                            networkBufferSize += readResult
+                            bytesRead += readResult
                         }
                         else
                         {
@@ -366,17 +360,7 @@ class TransmissionConnection(var logger: Logger?) : Connection
             }
         }
 
-        val numberToAdd = min(numberToRead, networkBufferSize)
-        val numberLeftOver = networkBufferSize - numberToAdd
-        val bytesToAdd = networkBuffer.dropLast(networkBuffer.size - numberToAdd).toByteArray()
-        result += bytesToAdd
-
-        if (networkBufferSize - numberToAdd > 0)
-        {
-            buffer += networkBuffer.drop(numberToAdd).dropLast(networkBuffer.size - numberLeftOver).toByteArray()
-        }
-
-        return result
+        return networkBuffer
     }
 
     override fun write(string: String): Boolean

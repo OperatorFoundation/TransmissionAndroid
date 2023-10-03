@@ -8,7 +8,7 @@ import com.hoho.android.usbserial.driver.*
 
 class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection {
     companion object {
-        const val timeout = 1000
+        const val timeout = 0
 
         fun new(context: Context, permissionIntent: PendingIntent): SerialConnection {
             // Find all available drivers from attached devices.

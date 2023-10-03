@@ -64,6 +64,9 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
             // add UsbManager.requestPermission(driver.getDevice(), ..) handling here
             val port0 = driver.ports[0] ?: throw Exception("serial port was null") // Most devices have just one port (port 0)
+            println("Connecting to device on port: ${port0.portNumber}")
+            println("Device: ${port0.device.deviceName}")
+            println("Driver: $driver")
             return SerialConnection(port0, connection)
         }
     }

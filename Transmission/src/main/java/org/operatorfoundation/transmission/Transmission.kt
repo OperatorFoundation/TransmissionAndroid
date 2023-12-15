@@ -67,8 +67,8 @@ class Transmission {
                 }
             }
 
-            return connection.unsafeRead(maybeLength)
-
+//            return connection.unsafeRead(maybeLength)
+            return byteArrayOf(0)
         }
 
         fun writeWithLengthPrefix(connection: Connection, data: ByteArray, prefixSizeInBits: Int, logger: Logger?): Boolean

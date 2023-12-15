@@ -7,65 +7,65 @@ import java.util.logging.Logger
 class Transmission {
     companion object {
         fun readWithLengthPrefix(connection: Connection, prefixSizeInBits: Int, logger: Logger?): ByteArray? {
-            val maybeLength: Int?
-            val prefixSizeInBytes = prefixSizeInBits / 8
-
-            when (prefixSizeInBits)
-            {
-                8 ->
-                {
-                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        logger?.log( Level.WARNING, "Transmission: Failed to read the 8 bit length prefix from the network." )
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
-                }
-                16 ->
-                {
-                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        logger?.log(Level.WARNING, "Transmission: Failed to read the 16 bit length prefix from the network.")
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).short.toInt()
-                }
-                32 ->
-                {
-                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        logger?.log(Level.WARNING, "Transmission: Failed to read the 32 bit length prefix from the network.")
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).int
-                }
-                64 ->
-                {
-                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
-
-                    if (maybeLengthData == null)
-                    {
-                        logger?.log(Level.WARNING, "Transmission: Failed to read the 64 bit length prefix from the network.")
-                        return null
-                    }
-
-                    maybeLength = ByteBuffer.wrap(maybeLengthData).long.toInt()
-                }
-                else ->
-                {
-                    logger?.log(Level.SEVERE, "Transmission: Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
-                    return null
-                }
-            }
+//            val maybeLength: Int?
+//            val prefixSizeInBytes = prefixSizeInBits / 8
+//
+//            when (prefixSizeInBits)
+//            {
+//                8 ->
+//                {
+//                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
+//
+//                    if (maybeLengthData == null)
+//                    {
+//                        logger?.log( Level.WARNING, "Transmission: Failed to read the 8 bit length prefix from the network." )
+//                        return null
+//                    }
+//
+//                    maybeLength = ByteBuffer.wrap(maybeLengthData).get().toInt()
+//                }
+//                16 ->
+//                {
+//                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
+//
+//                    if (maybeLengthData == null)
+//                    {
+//                        logger?.log(Level.WARNING, "Transmission: Failed to read the 16 bit length prefix from the network.")
+//                        return null
+//                    }
+//
+//                    maybeLength = ByteBuffer.wrap(maybeLengthData).short.toInt()
+//                }
+//                32 ->
+//                {
+//                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
+//
+//                    if (maybeLengthData == null)
+//                    {
+//                        logger?.log(Level.WARNING, "Transmission: Failed to read the 32 bit length prefix from the network.")
+//                        return null
+//                    }
+//
+//                    maybeLength = ByteBuffer.wrap(maybeLengthData).int
+//                }
+//                64 ->
+//                {
+//                    val maybeLengthData = connection.unsafeRead(prefixSizeInBytes)
+//
+//                    if (maybeLengthData == null)
+//                    {
+//                        logger?.log(Level.WARNING, "Transmission: Failed to read the 64 bit length prefix from the network.")
+//                        return null
+//                    }
+//
+//                    maybeLength = ByteBuffer.wrap(maybeLengthData).long.toInt()
+//                }
+//                else ->
+//                {
+//                    logger?.log(Level.SEVERE, "Transmission: Unable to complete a read request, the size in bits of the requested length prefix is invalid. Requested size in bits: $prefixSizeInBits")
+//                    return null
+//                }
+//            }
 
 //            return connection.unsafeRead(maybeLength)
             return byteArrayOf(0)

@@ -10,8 +10,8 @@ import java.util.logging.Logger
 
 class TransmissionConnection(logger: Logger?) : BaseConnection(logger)
 {
-    private var udpConnection: DatagramSocket? = null
-    private var tcpConnection: Socket? = null
+    var udpConnection: DatagramSocket? = null
+    var tcpConnection: Socket? = null
 
     constructor(host:String, port: Int, type: ConnectionType = ConnectionType.TCP, logger: Logger?) : this(logger)
     {

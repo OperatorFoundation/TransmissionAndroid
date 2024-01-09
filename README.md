@@ -1,2 +1,2 @@
 # TransmissionAndroid
- A Kotlin implemetation of the Transmission library.
+ A Kotlin implementation of the Transmission library.

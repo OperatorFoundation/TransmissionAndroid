@@ -7,7 +7,7 @@ android {
     namespace = "org.operatorfoundation.transmission"
 
     defaultConfig {
-        minSdk 17
+        minSdk 24
         compileSdk 33
 
         multiDexEnabled true

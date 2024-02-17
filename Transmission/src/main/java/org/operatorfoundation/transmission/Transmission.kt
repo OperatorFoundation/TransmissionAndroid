@@ -4,7 +4,8 @@ import java.nio.ByteBuffer
 import java.util.logging.Level
 import java.util.logging.Logger
 
-class Transmission {
+class Transmission
+{
     companion object {
         fun readWithLengthPrefix(connection: Connection, prefixSizeInBits: Int, logger: Logger?): ByteArray? {
             val maybeLength: Int?
@@ -46,6 +47,11 @@ class Transmission {
                         return null
                     }
 
+                    if (maybeLengthData[0].toInt() != 0)
+                    {
+                        println("🐘Read a very large 32 bit length data: ${maybeLengthData.toHexString()}")
+                    }
+                    
                     maybeLength = ByteBuffer.wrap(maybeLengthData).int
                 }
                 64 ->

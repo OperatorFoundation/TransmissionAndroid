@@ -51,7 +51,7 @@ class Transmission
                     {
                         println("🐘Read a very large 32 bit length data: ${maybeLengthData.toHexString()}")
                     }
-                    
+
                     maybeLength = ByteBuffer.wrap(maybeLengthData).int
                 }
                 64 ->

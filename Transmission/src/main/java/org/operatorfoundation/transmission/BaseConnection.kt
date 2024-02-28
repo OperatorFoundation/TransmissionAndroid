@@ -52,32 +52,27 @@ abstract class BaseConnection(var logger: Logger?) : Connection
                     }
                     else
                     {
-                        val maybeData = networkRead(size)
-
-                        if (maybeData != null)
+                        while (size > buffer.size)
                         {
-                            buffer += maybeData
+                            val maybeData = networkRead(size)
 
-                            return if (size <= buffer.size)
+                            if (maybeData != null)
                             {
-                                val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
-                                val remainingBytes = buffer.drop(size).toByteArray()
-
-                                buffer = remainingBytes
-                                readBytes
+                                buffer += maybeData
                             }
                             else
                             {
-                                logger?.log(Level.WARNING, "BaseConnection: Requested a read for more data than what was available in the buffer.")
-                                null
+                                logger?.log(Level.WARNING, "BaseConnection: Failed to read data from the network.")
+                                close()
+                                return null
                             }
                         }
-                        else
-                        {
-                            logger?.log(Level.WARNING, "BaseConnection: Failed to read data from the network.")
-                            close()
-                            return null
-                        }
+
+                        val readBytes = buffer.dropLast(buffer.size - size).toByteArray()
+                        val remainingBytes = buffer.drop(size).toByteArray()
+
+                        buffer = remainingBytes
+                        return readBytes
                     }
                 }
             }

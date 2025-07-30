@@ -11,8 +11,12 @@ composeBom = "2024.09.00"
 appcompat = "1.7.1"
 material = "1.12.0"
 usbSerialForAndroid = "3.9.0"
+timber = "5.0.1"
 
 [libraries]
+usb-serial-android = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "usbSerialForAndroid" }
+timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
+
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -29,7 +33,6 @@ androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-usb-serial-android = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "usbSerialForAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

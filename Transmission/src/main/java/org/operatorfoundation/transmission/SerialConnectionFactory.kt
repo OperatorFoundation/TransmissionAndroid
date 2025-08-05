@@ -70,29 +70,29 @@ class SerialConnectionFactory(context: Context)
                 _connectionState.value = ConnectionState.RequestingPermission
 
                 // Request permission if needed
-                val permissionResult = permissionManager.requestPermissionSuspend(device)
+                val permissionResult = permissionManager.requestPermissionFor(device).collect { permissionResult ->
 
-                when (permissionResult)
-                {
-                    is USBPermissionManager.PermissionResult.Granted -> {
-                        _connectionState.value = ConnectionState.Connecting
+                    when (permissionResult)
+                    {
+                        is USBPermissionManager.PermissionResult.Granted -> {
+                            _connectionState.value = ConnectionState.Connecting
 
-                        // Create the serial connection
-                        val connection = createSerialConnection(device, baudRate, dataBits, stopBits, parity)
-                        _connectionState.value = ConnectionState.Connected(connection)
-                    }
+                            // Create the serial connection
+                            val connection = createSerialConnection(device, baudRate, dataBits, stopBits, parity)
+                            _connectionState.value = ConnectionState.Connected(connection)
+                        }
 
-                    is USBPermissionManager.PermissionResult.Denied -> {
-                        _connectionState.value = ConnectionState.Error("USB permission denied by user")
-                    }
+                        is USBPermissionManager.PermissionResult.Denied -> {
+                            _connectionState.value = ConnectionState.Error("USB permission denied by user")
+                        }
 
-                    is USBPermissionManager.PermissionResult.Error -> {
-                        _connectionState.value = ConnectionState.Error(
-                            "Permission request failed: ${permissionResult.message}"
-                        )
+                        is USBPermissionManager.PermissionResult.Error -> {
+                            _connectionState.value = ConnectionState.Error(
+                                "Permission request failed: ${permissionResult.message}"
+                            )
+                        }
                     }
                 }
-
             }
             catch (e: Exception)
             {
@@ -145,31 +145,32 @@ class SerialConnectionFactory(context: Context)
                 val device = driver.device
 
                 // Request permission
-                val permissionResult = permissionManager.requestPermissionSuspend(device)
+                val permissionResult = permissionManager.requestPermissionFor(device).collect { permissionResult ->
 
-                when (permissionResult)
-                {
-                    is USBPermissionManager.PermissionResult.Granted -> {
-                        _connectionState.value = ConnectionState.Connecting
+                    when (permissionResult)
+                    {
+                        is USBPermissionManager.PermissionResult.Granted -> {
+                            _connectionState.value = ConnectionState.Connecting
 
-                        val usbConnection = usbManager.openDevice(device)
-                            ?: throw Exception("Failed to open USB device")
+                            val usbConnection = usbManager.openDevice(device)
+                                ?: throw Exception("Failed to open USB device")
 
-                        val port = driver.ports.firstOrNull()
-                            ?: throw Exception("No serial ports available on device")
+                            val port = driver.ports.firstOrNull()
+                                ?: throw Exception("No serial ports available on device")
 
-                        val connection = SerialConnection(port, usbConnection)
-                        _connectionState.value = ConnectionState.Connected(connection)
-                    }
+                            val connection = SerialConnection(port, usbConnection)
+                            _connectionState.value = ConnectionState.Connected(connection)
+                        }
 
-                    is USBPermissionManager.PermissionResult.Denied -> {
-                        _connectionState.value = ConnectionState.Error("USB permission denied by user")
-                    }
+                        is USBPermissionManager.PermissionResult.Denied -> {
+                            _connectionState.value = ConnectionState.Error("USB permission denied by user")
+                        }
 
-                    is USBPermissionManager.PermissionResult.Error -> {
-                        _connectionState.value = ConnectionState.Error(
-                            "Permission request failed: ${permissionResult.message}"
-                        )
+                        is USBPermissionManager.PermissionResult.Error -> {
+                            _connectionState.value = ConnectionState.Error(
+                                "Permission request failed: ${permissionResult.message}"
+                            )
+                        }
                     }
                 }
             }

@@ -453,8 +453,7 @@ class MainActivity : ComponentActivity()
                 }
 
                 withContext(Dispatchers.IO) {
-                    val commandBytes = command.toByteArray()
-                    val success = connection.writeWithLengthPrefix(commandBytes, PREFIX_SIZE_16_BITS)
+                    val success = connection.write(command)
 
                     withContext(Dispatchers.Main) {
                         if (success)

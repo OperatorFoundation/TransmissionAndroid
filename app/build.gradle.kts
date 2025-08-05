@@ -42,6 +42,10 @@ android {
 dependencies {
     implementation(project(":Transmission"))
 
+    // 3rd party libraries
+    implementation(libs.usb.serial.android)
+    implementation(libs.timber)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -57,8 +61,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
-    // 3rd party libraries
-    implementation(libs.usb.serial.android)
-    implementation(libs.timber)
 }

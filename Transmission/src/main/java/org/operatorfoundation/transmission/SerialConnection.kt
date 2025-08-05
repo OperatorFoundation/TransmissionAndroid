@@ -108,7 +108,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         val result = this.port.read(bytes, timeout)
 
         if (result != maxSize) {
-            bytes = bytes.slice(0 until maxSize).toByteArray()
+            bytes = bytes.slice(0 until result).toByteArray()
         }
 
         return bytes

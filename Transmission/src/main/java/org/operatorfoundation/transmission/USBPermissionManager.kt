@@ -126,7 +126,19 @@ class USBPermissionManager(private val context: Context)
         // Register receiver and request permission
         try {
             val intentFilter = IntentFilter(ACTION_USB_PERMISSION)
-            context.registerReceiver(permissionReceiver, intentFilter)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            {
+                context.registerReceiver(
+                    permissionReceiver,
+                    intentFilter,
+                    Context.RECEIVER_NOT_EXPORTED
+                    )
+            }
+            else
+            {
+                context.registerReceiver(permissionReceiver, intentFilter)
+            }
 
             val permissionIntent = PendingIntent.getBroadcast(
                 context,

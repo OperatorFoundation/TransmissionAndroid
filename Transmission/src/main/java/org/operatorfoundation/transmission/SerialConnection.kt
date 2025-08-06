@@ -160,25 +160,6 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     }
 
     /**
-     * Checks if data is available to read without blocking
-     */
-    fun isDataAvailable(): Boolean
-    {
-        return try
-        {
-            // Try a very short read with minimal timeout
-            val originalTimeout = timeout
-            val testData = ByteArray(1)
-            val result = this.port.read(testData, 1) // 1ms timeout
-            result > 0
-        }
-        catch (e: Exception)
-        {
-            false
-        }
-    }
-
-    /**
      * Reads available data without blocking, up to maxSize bytes
      * Returns null if no data available, empty array if connection closed
      */
@@ -187,13 +168,27 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         return try
         {
             val buffer = ByteArray(maxSize)
-            val bytesRead = this.port.read(buffer, 10) // 10ms timeout
+            val bytesRead = this.port.read(buffer, 100) // 100ms timeout
 
             when
             {
-                bytesRead > 0 -> buffer.sliceArray(0 until bytesRead)
-                bytesRead == 0 -> null // No data available
-                else -> ByteArray(0) // Connection might be closed
+                bytesRead > 0 ->
+                {
+                    val readResult = buffer.sliceArray(0 until bytesRead)
+                    Timber.d("readAvailable read some data: ${readResult.toString()}")
+                    readResult
+                }
+
+                bytesRead == 0 -> // No data available
+                {
+                    null
+                }
+
+                else -> // Connection might be closed
+                {
+                    Timber.d("readAvailable received an unexpected response; The connection may be closed.")
+                    ByteArray(0)
+                }
             }
         }
         catch (e: Exception)
@@ -227,7 +222,9 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             {
                 null
             }
-        } catch (e: Exception) {
+        }
+        catch (e: Exception)
+        {
             Timber.w("Read with timeout error: ${e.message}")
             null
         }

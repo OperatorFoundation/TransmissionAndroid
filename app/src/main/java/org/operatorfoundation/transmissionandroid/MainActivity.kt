@@ -20,11 +20,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.operatorfoundation.transmission.SerialConnection
 import org.operatorfoundation.transmission.SerialConnectionFactory
 import timber.log.Timber
@@ -122,7 +124,8 @@ class MainActivity : ComponentActivity()
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun SerialDemoUI() {
+    private fun SerialDemoUI()
+    {
         val context = LocalContext.current
         val connectionState by connectionFactory.connectionState.collectAsState()
         val devices by availableDevices.collectAsState()
@@ -267,43 +270,61 @@ class MainActivity : ComponentActivity()
                             style = MaterialTheme.typography.titleMedium
                         )
 
+                        // Demo command sequence
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = { sendCommand(CMD_LED_ON) },
-                                modifier = Modifier.weight(1f)
+                                onClick = { runCommandSequenceTest() },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary
+                                )
                             ) {
-                                Text("LED ON")
-                            }
-
-                            Button(
-                                onClick = { sendCommand(CMD_LED_OFF) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("LED OFF")
+                                Text("Run Command Sequence Test")
                             }
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { sendCommand(CMD_STATUS) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Get Status")
-                            }
+//                        Row(
+//                            modifier = Modifier.fillMaxWidth(),
+//                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+//                        )
+//                        {
+//                            Button(
+//                                onClick = { sendCommand(CMD_LED_ON) },
+//                                modifier = Modifier.weight(1f)
+//                            ) {
+//                                Text("LED ON")
+//                            }
+//
+//                            Button(
+//                                onClick = { sendCommand(CMD_LED_OFF) },
+//                                modifier = Modifier.weight(1f)
+//                            ) {
+//                                Text("LED OFF")
+//                            }
+//                        }
 
-                            Button(
-                                onClick = { sendCommand(CMD_PING) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Ping")
-                            }
-                        }
+//                        Row(
+//                            modifier = Modifier.fillMaxWidth(),
+//                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+//                        )
+//                        {
+//                            Button(
+//                                onClick = { sendCommand(CMD_STATUS) },
+//                                modifier = Modifier.weight(1f)
+//                            ) {
+//                                Text("Get Status")
+//                            }
+//
+//                            Button(
+//                                onClick = { sendCommand(CMD_PING) },
+//                                modifier = Modifier.weight(1f)
+//                            ) {
+//                                Text("Ping")
+//                            }
+//                        }
                     }
                 }
             }
@@ -598,6 +619,278 @@ class MainActivity : ComponentActivity()
     {
         super.onDestroy()
         disconnectDevice()
+    }
+
+    // MARK: Demo functions
+
+    /**
+     * Test function that sends a predetermined sequence of commands to the microcontroller.
+     * Each command waits for a response before proceeding to the next one.
+     */
+    private fun runCommandSequenceTest()
+    {
+        lifecycleScope.launch {
+            try
+            {
+                val connection = currentConnection
+                if (connection == null)
+                {
+                    Timber.w("No active connection for command sequence test")
+                    return@launch
+                }
+
+                Timber.i("=== Starting Command Sequence Test ===")
+
+                // Predefined command sequence
+                val commandSequence = listOf(
+                    "2",
+                    "1",
+                    "11NIFK",
+                    "3",
+                    "aa00aa",
+                    "2",
+                    "0",
+                    "4",
+                    "14095600",
+                    "5",
+                    "q",
+                    "q",
+                    "3"
+                )
+
+                var sequenceSuccess = true
+
+                // Send each command and wait for response
+                for ((index, command) in commandSequence.withIndex())
+                {
+                    try
+                    {
+                        Timber.i("Sequence [${index + 1}/${commandSequence.size}]: Sending '$command'")
+
+                        // Send the command
+                        val sendSuccess = withContext(Dispatchers.IO)
+                        {
+                            connection.write(command + "\r\n")
+                        }
+
+                        if (!sendSuccess)
+                        {
+                            Timber.e("Failed to send command: $command")
+                            sequenceSuccess = false
+                            break
+                        }
+
+                        Timber.d("→ Sent: $command")
+
+                        // Wait for response with timeout
+                        val response = waitForAnyResponse(connection, timeoutMs = 2000)
+
+                        if (response != null)
+                        {
+                            Timber.d("← Response: $response")
+                        }
+                        else
+                        {
+                            Timber.w("No response received for command: $command")
+                            // Continue anyway - some commands might not respond
+                        }
+
+                        // Brief pause between commands
+                        delay(500) // 500ms delay between commands
+
+                    }
+                    catch (e: Exception)
+                    {
+                        Timber.e(e, "Error during command sequence at step ${index + 1}: $command")
+                        sequenceSuccess = false
+                        break
+                    }
+                }
+
+                // Send final 'q' command after all responses received
+                if (sequenceSuccess)
+                {
+                    Timber.i("Sequence complete, sending final '1' (transmit) command...")
+
+                    try
+                    {
+                        val finalSendSuccess = withContext(Dispatchers.IO) {
+                            connection.write("1")
+                        }
+
+                        if (finalSendSuccess)
+                        {
+                            Timber.d("→ Transmit command sent: 1")
+
+                            val finalResponse = waitForAnyResponse(connection, timeoutMs = 4 * 60 * 1000) // 4 minutes in milliseconds
+
+                            if (finalResponse != null)
+                            {
+                                Timber.d("← Final response: $finalResponse")
+                            }
+
+                            Timber.i("=== Command Sequence Test COMPLETED ===")
+                        }
+                        else
+                        {
+                            Timber.e("Failed to send final 'q' command")
+                        }
+
+                        val quitSendSuccess = withContext(Dispatchers.IO) {
+                            connection.write("q")
+                        }
+
+                    }
+                    catch (e: Exception)
+                    {
+                        Timber.e(e, "Error sending final command")
+                    }
+                }
+                else
+                {
+                    Timber.e("=== Command Sequence Test FAILED ===")
+                }
+
+            }
+            catch (e: Exception)
+            {
+                Timber.e(e, "Fatal error during command sequence test")
+            }
+        }
+    }
+
+    /**
+     * Waits for a response from the serial connection with a specified timeout.
+     *
+     * @param connection The serial connection to read from
+     * @param timeoutMs Timeout in milliseconds
+     * @return The received response string, or null if timeout/error
+     */
+    private suspend fun waitForResponse(connection: SerialConnection, timeoutMs: Long): String?
+    {
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(timeoutMs) {
+
+                val buffer = StringBuilder()
+                val startTime = System.currentTimeMillis()
+
+                while (System.currentTimeMillis() - startTime < timeoutMs)
+                {
+                    try
+                    {
+                        val data = connection.readAvailable()
+
+                        if (data != null && data.isNotEmpty())
+                        {
+                            for (byte in data)
+                            {
+                                val char = byte.toInt().toChar()
+
+                                when
+                                {
+                                    char == '\n' || char == '\r' ->
+                                    {
+                                        if (buffer.isNotEmpty())
+                                        {
+                                            return@withTimeoutOrNull buffer.toString().trim()
+                                        }
+                                    }
+
+                                    char.isISOControl().not() && char != '\u0000' ->
+                                    {
+                                        buffer.append(char)
+                                    }
+                                }
+                            }
+
+                            // If we got some data but no line ending yet, continue reading
+                            if (buffer.isNotEmpty())
+                            {
+                                delay(10) // Small delay before checking for more data
+                            }
+                        }
+                        else
+                        {
+                            delay(50) // No data available, wait a bit
+                        }
+                    }
+                    catch (e: Exception)
+                    {
+                        Timber.w(e.message)
+                        delay(100)
+                    }
+                }
+
+                // Timeout - return partial data if any
+                if (buffer.isNotEmpty())
+                {
+                    buffer.toString().trim()
+                }
+                else
+                {
+                    null
+                }
+            }
+        }
+    }
+
+    /**
+     * Waits for any response (not necessarily line-terminated)
+     */
+    private suspend fun waitForAnyResponse(connection: SerialConnection, timeoutMs: Long): String?
+    {
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(timeoutMs) {
+                val buffer = StringBuilder()
+                val startTime = System.currentTimeMillis()
+                var lastDataTime = startTime
+
+                while (System.currentTimeMillis() - startTime < timeoutMs)
+                {
+                    try
+                    {
+                        val data = connection.readAvailable()
+
+                        if (data != null && data.isNotEmpty()) {
+                            lastDataTime = System.currentTimeMillis()
+
+                            for (byte in data) {
+                                val char = byte.toInt().toChar()
+                                if (char.isISOControl().not() && char != '\u0000') {
+                                    buffer.append(char)
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // If we have data and haven't received more for 200ms, consider it complete
+                            if (buffer.isNotEmpty() &&
+                                System.currentTimeMillis() - lastDataTime > 200)
+                            {
+                                return@withTimeoutOrNull buffer.toString().trim()
+                            }
+
+                            delay(50)
+                        }
+
+                    }
+                    catch (e: Exception) {
+                        Timber.w(e.message)
+                        delay(1000)
+                    }
+                }
+
+                // Return whatever we got
+                if (buffer.isNotEmpty())
+                {
+                    buffer.toString().trim()
+                }
+                else
+                {
+                    null
+                }
+            }
+        }
     }
 
 }

@@ -8,10 +8,13 @@ import com.hoho.android.usbserial.driver.ProbeTable
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
+import timber.log.Timber
+import java.io.IOException
 
 
 class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection {
-    companion object {
+    companion object
+    {
         const val timeout = 0
 
         fun new(context: Context, permissionIntent: PendingIntent): SerialConnection {
@@ -76,7 +79,8 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         }
     }
 
-    init {
+    init
+    {
         this.port.open(this.connection)
         this.port.setParameters(
             115200,
@@ -140,6 +144,100 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     @Synchronized
     override fun close()
     {
-        this.port.close()
+        try
+        {
+            if (!this.port.isOpen)
+            {
+                return // Already closed, nothing to do
+            }
+            this.port.close()
+        }
+        catch (e: IOException)
+        {
+            // Log but don't crash - connection might already be closed
+            Timber.w("Port was already closed: ${e.message}")
+        }
+    }
+
+    /**
+     * Checks if data is available to read without blocking
+     */
+    fun isDataAvailable(): Boolean
+    {
+        return try
+        {
+            // Try a very short read with minimal timeout
+            val originalTimeout = timeout
+            val testData = ByteArray(1)
+            val result = this.port.read(testData, 1) // 1ms timeout
+            result > 0
+        }
+        catch (e: Exception)
+        {
+            false
+        }
+    }
+
+    /**
+     * Reads available data without blocking, up to maxSize bytes
+     * Returns null if no data available, empty array if connection closed
+     */
+    fun readAvailable(maxSize: Int = 64): ByteArray?
+    {
+        return try
+        {
+            val buffer = ByteArray(maxSize)
+            val bytesRead = this.port.read(buffer, 10) // 10ms timeout
+
+            when
+            {
+                bytesRead > 0 -> buffer.sliceArray(0 until bytesRead)
+                bytesRead == 0 -> null // No data available
+                else -> ByteArray(0) // Connection might be closed
+            }
+        }
+        catch (e: Exception)
+        {
+            // Log but don't crash
+           Timber.w( "Read error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Reads data with a specific timeout in milliseconds
+     * Returns null if timeout or error occurs
+     */
+    fun readWithTimeout(size: Int, timeoutMs: Int): ByteArray?
+    {
+        return try
+        {
+            val buffer = ByteArray(size)
+            val bytesRead = this.port.read(buffer, timeoutMs)
+
+            if (bytesRead == size)
+            {
+                buffer
+            }
+            else if (bytesRead > 0)
+            {
+                buffer.sliceArray(0 until bytesRead)
+            }
+            else
+            {
+                null
+            }
+        } catch (e: Exception) {
+            Timber.w("Read with timeout error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Non-blocking read that returns immediately with whatever data is available
+     */
+    fun readNonBlocking(maxSize: Int = 64): ByteArray?
+    {
+        return readWithTimeout(maxSize, 0) // 0ms timeout = immediate return
     }
 }

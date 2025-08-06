@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.security.Permission
+import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
@@ -21,7 +21,7 @@ import kotlin.coroutines.resume
  * Manages USB device permissions for serial communication.
  * Handles permission requests, caching, and provides real time permission state updates.
  */
-class USBPermissionManager(private val context: Context)
+class USBPermissionManager(private val activityContext: Context)
 {
     companion object
     {
@@ -29,17 +29,10 @@ class USBPermissionManager(private val context: Context)
         private const val EXTRA_DEVICE = "device"
         private const val EXTRA_PERMISSION_GRANTED = "permission"
 
-        private val PENDING_INTENT_FLAGS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-        {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        }
-        else
-        {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
+        private val PENDING_INTENT_FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     }
 
-    private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    private val usbManager = activityContext.getSystemService(Context.USB_SERVICE) as UsbManager
 
     // Cache permission states to avoid repeated system calls
     private val permissionCache = ConcurrentHashMap<String, Boolean>()
@@ -52,6 +45,19 @@ class USBPermissionManager(private val context: Context)
         object Granted: PermissionResult()
         object Denied: PermissionResult()
         data class Error(val message: String) : PermissionResult()
+    }
+
+    init {
+        Timber.d("=== USBPermissionManager Context Info ===")
+        Timber.d("Context type: ${activityContext.javaClass.simpleName}")
+        Timber.d("Context: $activityContext")
+        if (activityContext is android.app.Activity) {
+            Timber.d("Is Activity: true")
+        } else if (activityContext is android.app.Application) {
+            Timber.d("Is Application: true")
+        } else {
+            Timber.d("Context type: Other (${activityContext.javaClass.name})")
+        }
     }
 
     /**
@@ -89,22 +95,44 @@ class USBPermissionManager(private val context: Context)
 
             override fun onReceive(context: Context, intent: Intent)
             {
+                Timber.d("=== BROADCAST RECEIVED ===")
+                Timber.d("Action: ${intent.action}")
+                Timber.d("Expected: $ACTION_USB_PERMISSION")
+                Timber.d("Context: ${context.javaClass.simpleName}")
+                Timber.d("Thread: ${Thread.currentThread().name}")
+
                 if (ACTION_USB_PERMISSION == intent.action)
                 {
+                    Timber.d("USB permission broadcast received!")
+
+                    // Debug: Log all extras in the intent
+                    val extras = intent.extras
+                    if (extras != null)
+                    {
+                        for (key in extras.keySet())
+                        {
+                            Timber.d("Intent extra: $key = ${extras.get(key)}")
+                        }
+                    }
+                    else
+                    {
+                        Timber.d("No extras in intent")
+                    }
+
                     val receivedDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                     {
-                        intent.getParcelableExtra(EXTRA_DEVICE, UsbDevice::class.java)
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
                     }
                     else
                     {
                         @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(EXTRA_DEVICE)
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     }
 
                     // Verify the response is for our device.
                     if (receivedDevice != null && getDeviceKey(receivedDevice) == deviceKey)
                     {
-                        val granted = intent.getBooleanExtra(EXTRA_PERMISSION_GRANTED, false)
+                        val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                         permissionCache[deviceKey] = granted
 
                         val result = if (granted)
@@ -119,6 +147,29 @@ class USBPermissionManager(private val context: Context)
                         trySend(result)
                         close()
                     }
+                    else
+                    {
+                        if (receivedDevice != null) {
+                            Timber.d(
+                                "Received permission for an unexpected device: ${
+                                    getDeviceKey(
+                                        receivedDevice
+                                    )
+                                }"
+                            )
+                        }
+                        else
+                        {
+                            Timber.d("Received permission but the device is null.")
+                        }
+
+                        trySend(PermissionResult.Error("Device mismatch in permission response"))
+                        close()
+                    }
+                }
+                else
+                {
+                    Timber.d("Ignoring broadcast with different action")
                 }
             }
         }
@@ -127,9 +178,13 @@ class USBPermissionManager(private val context: Context)
         try {
             val intentFilter = IntentFilter(ACTION_USB_PERMISSION)
 
+            Timber.d("=== REGISTERING RECEIVER ===")
+            Timber.d("Context: ${activityContext.javaClass.simpleName}")
+            Timber.d("Filter: ${intentFilter.actionsIterator().asSequence().toList()}")
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             {
-                context.registerReceiver(
+                activityContext.registerReceiver(
                     permissionReceiver,
                     intentFilter,
                     Context.RECEIVER_NOT_EXPORTED
@@ -137,20 +192,33 @@ class USBPermissionManager(private val context: Context)
             }
             else
             {
-                context.registerReceiver(permissionReceiver, intentFilter)
+                activityContext.registerReceiver(permissionReceiver, intentFilter)
             }
 
+            Timber.d("Receiver registered successfully")
+            Timber.d("IntentFilter actions: ${intentFilter.actionsIterator().asSequence().toList()}")
+            Timber.d("Current thread: ${Thread.currentThread().name}")
+            Timber.d("Context: ${activityContext.javaClass.simpleName}")
+
             val permissionIntent = PendingIntent.getBroadcast(
-                context,
-                deviceKey.hashCode(), // Use device key hash as a unique request code
+                activityContext,
+                0, // Use device key hash as a unique request code
                 Intent(ACTION_USB_PERMISSION),
-                PENDING_INTENT_FLAGS
+                PendingIntent.FLAG_IMMUTABLE
             )
 
+            Timber.d("Created PendingIntent with request code: ${deviceKey.hashCode()}")
+            Timber.d("PendingIntent flags: $PENDING_INTENT_FLAGS")
+
             usbManager.requestPermission(device, permissionIntent)
+
+            Timber.d("Permission request sent for device: ${device.deviceName}")
+            Timber.d("Using action: $ACTION_USB_PERMISSION")
+            Timber.d("Device key: $deviceKey")
         }
         catch (error: Exception)
         {
+            Timber.e(error, "Failed to register receiver or request permission")
             trySend(PermissionResult.Error("Failed to request permission: ${error.message}"))
             close()
         }
@@ -159,7 +227,7 @@ class USBPermissionManager(private val context: Context)
         awaitClose {
             try
             {
-                context.unregisterReceiver(permissionReceiver)
+                activityContext.unregisterReceiver(permissionReceiver)
             }
             catch (e: IllegalArgumentException)
             {

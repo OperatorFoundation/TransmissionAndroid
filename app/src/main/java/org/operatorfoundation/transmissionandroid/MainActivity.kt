@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 import org.operatorfoundation.transmission.SerialConnection
 import org.operatorfoundation.transmission.SerialConnectionFactory
 import timber.log.Timber
+import java.io.Serial
 import java.sql.Driver
 import java.text.SimpleDateFormat
 import java.util.*
@@ -132,6 +133,47 @@ class MainActivity : ComponentActivity()
         LaunchedEffect(logs.size) {
             if (logs.isNotEmpty()) {
                 listState.animateScrollToItem(logs.size - 1)
+            }
+        }
+
+        // Handle connection state changes
+        LaunchedEffect(connectionState)
+        {
+            when (connectionState)
+            {
+                is SerialConnectionFactory.ConnectionState.Connected ->
+                {
+                    if (currentConnection == null)
+                    {
+                        currentConnection = (connectionState as SerialConnectionFactory.ConnectionState.Connected).connection
+                        Timber.i("Successfully connected!")
+                        startReadingData()
+                    }
+                }
+
+                is SerialConnectionFactory.ConnectionState.Error ->
+                {
+                    Timber.e("Connection failed: ${(connectionState as SerialConnectionFactory.ConnectionState.Error).message}")
+                    Toast.makeText(context,
+                        "Connection failed: ${(connectionState as SerialConnectionFactory.ConnectionState.Error).message}",
+                        Toast.LENGTH_LONG).show()
+                }
+
+                is SerialConnectionFactory.ConnectionState.RequestingPermission ->
+                {
+                    Timber.d("Requesting USB permission...")
+                }
+
+                is SerialConnectionFactory.ConnectionState.Connecting ->
+                {
+                    Timber.d("Establishing connection...")
+                }
+
+                is SerialConnectionFactory.ConnectionState.Disconnected ->
+                {
+                    currentConnection = null
+                    Timber.d("Connection state: Disconnected")
+                }
             }
         }
 
@@ -394,36 +436,10 @@ class MainActivity : ComponentActivity()
      */
     private fun connectToDevice(driver: UsbSerialDriver)
     {
-        lifecycleScope.launch {
-            Timber.i("Connecting to ${driver.device.deviceName}...")
+        Timber.d("connectToDevice() called for ${driver.device.deviceName}")
+        Timber.i("Connecting to ${driver.device.deviceName}...")
 
-            connectionFactory.createConnection(driver.device).collect { state ->
-                when (state) {
-                    is SerialConnectionFactory.ConnectionState.Connected -> {
-                        currentConnection = state.connection
-                        Timber.i("Successfully connected to ${driver.device.deviceName}")
-                        startReadingData()
-                    }
-
-                    is SerialConnectionFactory.ConnectionState.Error -> {
-                        Timber.e("Connection failed: ${state.message}")
-                        Toast.makeText(this@MainActivity,
-                            "Connection failed: ${state.message}",
-                            Toast.LENGTH_LONG).show()
-                    }
-
-                    is SerialConnectionFactory.ConnectionState.RequestingPermission -> {
-                        Timber.d("Requesting USB permission...")
-                    }
-
-                    is SerialConnectionFactory.ConnectionState.Connecting -> {
-                        Timber.d("Establishing connection...")
-                    }
-
-                    else -> { Timber.d("Received unknown state ($state) while trying to connect to ${driver.device.deviceName}") }
-                }
-            }
-        }
+        connectionFactory.createConnection(driver.device)
     }
 
     /**
@@ -480,44 +496,66 @@ class MainActivity : ComponentActivity()
     private fun startReadingData()
     {
         lifecycleScope.launch {
-            try
-            {
+            try {
                 val connection = currentConnection ?: return@launch
+                Timber.d("Starting non-blocking read loop...")
 
                 withContext(Dispatchers.IO) {
+                    val buffer = StringBuilder()
+                    var consecutiveEmptyReads = 0
+
                     while (currentConnection != null)
                     {
-                        try
-                        {
-                            // Read response using length-prefixed protocol
-                            val responseBytes = connection.readWithLengthPrefix(PREFIX_SIZE_16_BITS)
+                        try {
+                            // Use the new non-blocking read
+                            val data = connection.readAvailable(64)
 
-                            if (responseBytes != null)
-                            {
-                                val response = String(responseBytes)
+                            when {
+                                data != null && data.isNotEmpty() -> {
+                                    consecutiveEmptyReads = 0
 
-                                withContext(Dispatchers.Main)
-                                {
-                                    Timber.d("← Received: $response")
+                                    // Process each byte
+                                    for (byte in data) {
+                                        val char = byte.toInt().toChar()
+
+                                        when {
+                                            char == '\n' || char == '\r' -> {
+                                                if (buffer.isNotEmpty()) {
+                                                    val message = buffer.toString().trim()
+                                                    withContext(Dispatchers.Main) {
+                                                        Timber.d("← Received: $message")
+                                                    }
+                                                    buffer.clear()
+                                                }
+                                            }
+                                            char.isISOControl().not() && char != '\u0000' -> {
+                                                buffer.append(char)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                data != null && data.isEmpty() -> {
+                                    // Connection might be closed
+                                    Timber.w("Connection appears closed")
+                                    break
+                                }
+
+                                data == null -> {
+                                    // No data available
+                                    consecutiveEmptyReads++
+                                    kotlinx.coroutines.delay(if (consecutiveEmptyReads > 100) 50 else 10)
                                 }
                             }
-                        }
-                        catch (e: Exception)
-                        {
-                            withContext(Dispatchers.Main)
-                            {
-                                Timber.e(e, "Read error")
-                            }
 
-                            // Break the loop on read errors
-                            break
+                        } catch (e: Exception) {
+                            Timber.e(e, "Read loop error")
+                            kotlinx.coroutines.delay(100)
                         }
                     }
                 }
-            }
-            catch (e: Exception)
-            {
-                Timber.e(e, "Error in read loop")
+            } catch (e: Exception) {
+                Timber.e(e, "Fatal error in read loop")
             }
         }
     }

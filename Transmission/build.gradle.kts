@@ -33,6 +33,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.timber)
+
     implementation(libs.usb.serial.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

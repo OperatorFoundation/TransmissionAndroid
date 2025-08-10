@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 /**
  * Factory for creating SerialConnection instances with proper permission handling.
@@ -173,6 +174,7 @@ class SerialConnectionFactory(context: Context)
                 }
 
                 val driver = availableDrivers.first()
+                Timber.d("🔌 Creating a connection with ${driver::class}")
                 val device = driver.device
 
                 val permissionResult = permissionManager.requestPermissionFor(device).first()

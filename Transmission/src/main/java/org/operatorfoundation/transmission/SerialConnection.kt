@@ -163,19 +163,19 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
      * Reads available data without blocking, up to maxSize bytes
      * Returns null if no data available, empty array if connection closed
      */
-    fun readAvailable(maxSize: Int = 64): ByteArray?
+    fun readAvailable(maxSize: Int = 4096): ByteArray?
     {
         return try
         {
             val buffer = ByteArray(maxSize)
-            val bytesRead = this.port.read(buffer, 100) // 100ms timeout
+            val bytesRead = this.port.read(buffer, 1000) // 100ms timeout
 
             when
             {
                 bytesRead > 0 ->
                 {
                     val readResult = buffer.sliceArray(0 until bytesRead)
-                    Timber.d("readAvailable read some data: ${readResult.toString()}")
+                    Timber.d("Read some data: ${readResult.toString()}")
                     readResult
                 }
 
@@ -186,7 +186,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
 
                 else -> // Connection might be closed
                 {
-                    Timber.d("readAvailable received an unexpected response; The connection may be closed.")
+                    Timber.d("Received an unexpected response; The connection may be closed.")
                     ByteArray(0)
                 }
             }
@@ -194,7 +194,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         catch (e: Exception)
         {
             // Log but don't crash
-           Timber.w( "Read error: ${e.message}")
+//           Timber.w( "Read error: ${e.message}")
             null
         }
     }

@@ -8,6 +8,7 @@ import java.net.Socket
 import java.util.logging.Level
 import java.util.logging.Logger
 
+
 class TransmissionConnection(logger: Logger?) : BaseConnection(logger)
 {
     var udpConnection: DatagramSocket? = null

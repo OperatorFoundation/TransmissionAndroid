@@ -1,10 +1,15 @@
 package org.operatorfoundation.transmissionandroid
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import kotlinx.coroutines.Dispatchers
@@ -30,10 +34,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.operatorfoundation.transmission.SerialConnection
 import org.operatorfoundation.transmission.SerialConnectionFactory
 import timber.log.Timber
-import java.io.Serial
-import java.sql.Driver
 import java.text.SimpleDateFormat
 import java.util.*
+import android.hardware.usb.UsbDevice
 
 
 /**
@@ -42,6 +45,8 @@ import java.util.*
  */
 class MainActivity : ComponentActivity()
 {
+    private var usbStateReceiver: BroadcastReceiver? = null
+
     companion object
     {
         // Length prefix sizes supported by the transmission protocol
@@ -108,6 +113,16 @@ class MainActivity : ComponentActivity()
         {
             Timber.plant(UILoggingTree())
         }
+
+        // Initialize and register USB state receiver for auto-detection
+        initializeUsbStateReceiver()
+        val usbIntentFilter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        registerReceiver(usbStateReceiver, usbIntentFilter)
+
+        Timber.i("USB auto-detection enabled")
 
         connectionFactory = SerialConnectionFactory(this)
 
@@ -243,7 +258,9 @@ class MainActivity : ComponentActivity()
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else {
+                    }
+                    else
+                    {
                         devices.forEach { driver ->
                             DeviceCard(
                                 driver = driver,
@@ -283,6 +300,26 @@ class MainActivity : ComponentActivity()
                                 )
                             ) {
                                 Text("Run Command Sequence Test")
+                            }
+                        }
+
+                        // Test Arduino output button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { testArduinoOutput() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Test Output")
+                            }
+
+                            Button(
+                                onClick = { runCommandSequenceTest() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Run Sequence")
                             }
                         }
 
@@ -517,66 +554,66 @@ class MainActivity : ComponentActivity()
     private fun startReadingData()
     {
         lifecycleScope.launch {
-            try {
+            try
+            {
                 val connection = currentConnection ?: return@launch
-                Timber.d("Starting non-blocking read loop...")
+                Timber.d("Starting Arduino-optimized read loop...")
 
                 withContext(Dispatchers.IO) {
                     val buffer = StringBuilder()
-                    var consecutiveEmptyReads = 0
 
                     while (currentConnection != null)
                     {
-                        try {
-                            // Use the new non-blocking read
-                            val data = connection.readAvailable(64)
+                        try
+                        {
+                            // Read more aggressively since Arduino can send bursts
+                            val data = connection.readAvailable(256) // Larger buffer
 
-                            when {
-                                data != null && data.isNotEmpty() -> {
-                                    consecutiveEmptyReads = 0
+                            if (data != null && data.isNotEmpty())
+                            {
+                                Timber.v("Raw data received: ${data.size} bytes")
 
-                                    // Process each byte
-                                    for (byte in data) {
-                                        val char = byte.toInt().toChar()
+                                for (byte in data)
+                                {
+                                    val char = byte.toInt().toChar()
 
-                                        when {
-                                            char == '\n' || char == '\r' -> {
-                                                if (buffer.isNotEmpty()) {
-                                                    val message = buffer.toString().trim()
-                                                    withContext(Dispatchers.Main) {
-                                                        Timber.d("← Received: $message")
-                                                    }
-                                                    buffer.clear()
+                                    when
+                                    {
+                                        char == '\n' -> {
+                                            if (buffer.isNotEmpty())
+                                            {
+                                                val message = buffer.toString().trim()
+                                                withContext(Dispatchers.Main) {
+                                                    Timber.i("← Arduino: $message")
                                                 }
+                                                buffer.clear()
                                             }
-                                            char.isISOControl().not() && char != '\u0000' -> {
-                                                buffer.append(char)
-                                            }
+                                        }
+                                        char == '\r' -> {
+                                            // Skip carriage return, wait for newline
+                                        }
+                                        char.isISOControl().not() && char != '\u0000' -> {
+                                            buffer.append(char)
                                         }
                                     }
                                 }
-
-                                data != null && data.isEmpty() -> {
-                                    // Connection might be closed
-                                    Timber.w("Connection appears closed")
-                                    break
-                                }
-
-                                data == null -> {
-                                    // No data available
-                                    consecutiveEmptyReads++
-                                    kotlinx.coroutines.delay(if (consecutiveEmptyReads > 100) 50 else 10)
-                                }
                             }
 
-                        } catch (e: Exception) {
-                            Timber.e(e, "Read loop error")
-                            kotlinx.coroutines.delay(100)
+                            // Shorter delay when data is flowing
+                            delay(5) // Very short delay
+
+                        }
+                        catch (e: Exception)
+                        {
+                            Timber.w("Read error: ${e.message}")
+                            delay(100)
                         }
                     }
                 }
-            } catch (e: Exception) {
-                Timber.e(e, "Fatal error in read loop")
+            }
+            catch (e: Exception)
+            {
+                Timber.e(e, "Error in Arduino read loop")
             }
         }
     }
@@ -619,6 +656,17 @@ class MainActivity : ComponentActivity()
     {
         super.onDestroy()
         disconnectDevice()
+
+        // Unregister USB state receiver
+        usbStateReceiver?.let {
+            try {
+                unregisterReceiver(it)
+                Timber.d("USB state receiver unregistered")
+            } catch (e: IllegalArgumentException) {
+                // Receiver was already unregistered or never registered
+                Timber.w("USB state receiver was already unregistered")
+            }
+        }
     }
 
     // MARK: Demo functions
@@ -644,18 +692,18 @@ class MainActivity : ComponentActivity()
                 // Predefined command sequence
                 val commandSequence = listOf(
                     "2",
-                    "1",
-                    "11NIFK",
-                    "3",
-                    "aa00aa",
+                    "#",
                     "2",
-                    "0",
+                    "3",
+                    "QA0DEF",
+                    "7",
+                    "BK8600",
+                    "6",
+                    "11",
+                    "2",
                     "4",
-                    "14095600",
-                    "5",
-                    "q",
-                    "q",
-                    "3"
+                    "14097157",
+                    "q"
                 )
 
                 var sequenceSuccess = true
@@ -683,7 +731,7 @@ class MainActivity : ComponentActivity()
                         Timber.d("→ Sent: $command")
 
                         // Wait for response with timeout
-                        val response = waitForAnyResponse(connection, timeoutMs = 2000)
+                        val response = waitForAnyResponse(connection, timeoutMs = 500)
 
                         if (response != null)
                         {
@@ -691,12 +739,12 @@ class MainActivity : ComponentActivity()
                         }
                         else
                         {
-                            Timber.w("No response received for command: $command")
+//                            Timber.w("No response received for command: $command")
                             // Continue anyway - some commands might not respond
                         }
 
                         // Brief pause between commands
-                        delay(500) // 500ms delay between commands
+                        delay(50) // 500ms delay between commands
 
                     }
                     catch (e: Exception)
@@ -874,9 +922,9 @@ class MainActivity : ComponentActivity()
                         }
 
                     }
-                    catch (e: Exception) {
-                        Timber.w(e.message)
-                        delay(1000)
+                    catch (e: Exception)
+                    {
+                        delay(500)
                     }
                 }
 
@@ -889,6 +937,82 @@ class MainActivity : ComponentActivity()
                 {
                     null
                 }
+            }
+        }
+    }
+
+    /**
+     * Initializes a BroadcastReceiver to listen for USB device attachment/detachment events.
+     * Automatically refreshes the device list when USB devices are connected or disconnected.
+     */
+    private fun initializeUsbStateReceiver() {
+        usbStateReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                        Timber.d("USB device attached - refreshing device list")
+                        // Small delay to allow the system to fully recognize the device
+                        lifecycleScope.launch {
+                            delay(500)
+                            scanForDevices()
+                        }
+                    }
+                    UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                        Timber.d("USB device detached - refreshing device list")
+                        // If we're connected to this device, update our state
+                        val detachedDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                        }
+
+                        // Check if the detached device is our current connection
+                        if (currentConnection != null && detachedDevice != null) {
+                            // You might want to check if this is the connected device
+                            // For now, we'll just refresh the list
+                            disconnectDevice()
+                        }
+                        scanForDevices()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun testArduinoOutput()
+    {
+        lifecycleScope.launch {
+            try
+            {
+                val connection = currentConnection ?: return@launch
+                Timber.i("=== Testing Arduino Output ===")
+
+                withContext(Dispatchers.IO) {
+                    // Send a command that should generate output
+                    connection.write("STATUS")
+                    Timber.d("→ Sent STATUS command")
+
+                    // Wait and read multiple times
+                    repeat(10) { attempt ->
+                        delay(100) // Wait 100ms between attempts
+
+                        val data = connection.readAvailable(128)
+                        if (data != null && data.isNotEmpty())
+                        {
+                            val message = String(data)
+                            Timber.d("← Attempt $attempt: Received '$message'")
+                            val hex = data.joinToString(" ") { String.format("%02X", it) }
+                            Timber.d("← Raw hex: $hex")
+                        }
+                        else
+                        {
+                            Timber.d("← Attempt $attempt: No data")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Error in Arduino output test")
             }
         }
     }

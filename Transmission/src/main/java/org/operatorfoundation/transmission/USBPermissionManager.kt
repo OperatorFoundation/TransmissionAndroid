@@ -53,9 +53,13 @@ class USBPermissionManager(private val activityContext: Context)
         Timber.d("Context: $activityContext")
         if (activityContext is android.app.Activity) {
             Timber.d("Is Activity: true")
-        } else if (activityContext is android.app.Application) {
+        }
+        else if (activityContext is android.app.Application)
+        {
             Timber.d("Is Application: true")
-        } else {
+        }
+        else
+        {
             Timber.d("Context type: Other (${activityContext.javaClass.name})")
         }
     }
@@ -91,8 +95,8 @@ class USBPermissionManager(private val activityContext: Context)
         }
 
         // Create a broadcast receiver to handle the permission response.
-        val permissionReceiver = object : BroadcastReceiver() {
-
+        val permissionReceiver = object : BroadcastReceiver()
+        {
             override fun onReceive(context: Context, intent: Intent)
             {
                 Timber.d("=== BROADCAST RECEIVED ===")
@@ -104,6 +108,22 @@ class USBPermissionManager(private val activityContext: Context)
                 if (ACTION_USB_PERMISSION == intent.action)
                 {
                     Timber.d("USB permission broadcast received!")
+
+                    // Check what Android actually sends
+                    val androidDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    }
+                    else
+                    {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+
+                    Timber.d("Android provided device: ${androidDevice?.deviceName}")
+                    Timber.d("Android device key: ${androidDevice?.let { getDeviceKey(it) }}")
+                    Timber.d("Expected device key: $deviceKey")
+                    Timber.d("Permission granted flag: ${intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)}")
 
                     // Debug: Log all extras in the intent
                     val extras = intent.extras
@@ -200,17 +220,19 @@ class USBPermissionManager(private val activityContext: Context)
             Timber.d("Current thread: ${Thread.currentThread().name}")
             Timber.d("Context: ${activityContext.javaClass.simpleName}")
 
-            val permissionIntent = PendingIntent.getBroadcast(
+            // Create intent with the device as an extra so it comes back in the broadcast
+            val permissionIntent = Intent(ACTION_USB_PERMISSION).apply {
+                putExtra(UsbManager.EXTRA_DEVICE, device)
+            }
+
+            val pendingIntent = PendingIntent.getBroadcast(
                 activityContext,
-                0, // Use device key hash as a unique request code
-                Intent(ACTION_USB_PERMISSION),
-                PendingIntent.FLAG_IMMUTABLE
+                device.deviceId,
+                permissionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            Timber.d("Created PendingIntent with request code: ${deviceKey.hashCode()}")
-            Timber.d("PendingIntent flags: $PENDING_INTENT_FLAGS")
-
-            usbManager.requestPermission(device, permissionIntent)
+            usbManager.requestPermission(device, pendingIntent)
 
             Timber.d("Permission request sent for device: ${device.deviceName}")
             Timber.d("Using action: $ACTION_USB_PERMISSION")

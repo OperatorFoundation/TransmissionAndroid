@@ -91,40 +91,6 @@ class SerialConnectionFactory(context: Context)
                         )
                     }
                 }
-
-//                val result = withTimeoutOrNull(10000)
-//                {
-//                    // Request permission if needed
-//                    permissionManager.requestPermissionFor(device).collect { permissionResult ->
-//
-//                        when (permissionResult)
-//                        {
-//                            is USBPermissionManager.PermissionResult.Granted -> {
-//                                _connectionState.value = ConnectionState.Connecting
-//
-//                                // Create the serial connection
-//                                val connection = createSerialConnection(device, baudRate, dataBits, stopBits, parity)
-//                                _connectionState.value = ConnectionState.Connected(connection)
-//                            }
-//
-//                            is USBPermissionManager.PermissionResult.Denied -> {
-//                                _connectionState.value = ConnectionState.Error("USB permission denied by user")
-//                            }
-//
-//                            is USBPermissionManager.PermissionResult.Error -> {
-//                                _connectionState.value = ConnectionState.Error(
-//                                    "Permission request failed: ${permissionResult.message}"
-//                                )
-//                            }
-//                        }
-//                    }
-//                }
-//
-//                if (result == null)
-//                {
-//                    _connectionState.value = ConnectionState.Error("Permission request timed out.")
-//                }
-
             }
             catch (e: Exception)
             {
@@ -261,6 +227,8 @@ class SerialConnectionFactory(context: Context)
         val driver = availableDrivers.find { it.device == device }
             ?: throw Exception("No USB serial driver found for device: ${device.deviceName}")
 
+        Timber.d("🔌 Connecting to driver ${driver::class}")
+
         // Open device connection
         val usbConnection = usbManager.openDevice(device)
             ?: throw Exception("Failed to open USB device: ${device.deviceName}")
@@ -268,6 +236,8 @@ class SerialConnectionFactory(context: Context)
         // Get the first available port
         val port = driver.ports.firstOrNull()
             ?: throw Exception("No serial ports available on device: ${device.deviceName}")
+
+        Timber.d("🔌 Connecting to port ${port::class}")
 
         // Create and configure the Serial connection
         val connection = SerialConnection(port, usbConnection)

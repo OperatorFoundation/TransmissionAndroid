@@ -165,7 +165,7 @@ class MainActivity : ComponentActivity()
                     {
                         currentConnection = (connectionState as SerialConnectionFactory.ConnectionState.Connected).connection
                         Timber.i("Successfully connected!")
-                        startReadingData()
+//                        startReadingData()
                     }
                 }
 

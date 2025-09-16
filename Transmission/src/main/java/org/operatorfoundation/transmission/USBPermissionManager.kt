@@ -195,48 +195,52 @@ class USBPermissionManager(private val activityContext: Context)
         }
 
         // Register receiver and request permission
-        try {
-            val intentFilter = IntentFilter(ACTION_USB_PERMISSION)
+        try
+        {
+            kotlinx.coroutines.MainScope().launch {
+                val intentFilter = IntentFilter(ACTION_USB_PERMISSION)
 
-            Timber.d("=== REGISTERING RECEIVER ===")
-            Timber.d("Context: ${activityContext.javaClass.simpleName}")
-            Timber.d("Filter: ${intentFilter.actionsIterator().asSequence().toList()}")
+                Timber.d("=== REGISTERING RECEIVER ===")
+                Timber.d("Context: ${activityContext.javaClass.simpleName}")
+                Timber.d("Filter: ${intentFilter.actionsIterator().asSequence().toList()}")
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            {
-                activityContext.registerReceiver(
-                    permissionReceiver,
-                    intentFilter,
-                    Context.RECEIVER_NOT_EXPORTED
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                {
+                    activityContext.registerReceiver(
+                        permissionReceiver,
+                        intentFilter,
+                        Context.RECEIVER_NOT_EXPORTED
                     )
+                }
+                else
+                {
+                    activityContext.registerReceiver(permissionReceiver, intentFilter)
+                }
+
+                Timber.d("Receiver registered successfully")
+                Timber.d("IntentFilter actions: ${intentFilter.actionsIterator().asSequence().toList()}")
+                Timber.d("Current thread: ${Thread.currentThread().name}")
+                Timber.d("Context: ${activityContext.javaClass.simpleName}")
+
+                // Create intent with the device as an extra so it comes back in the broadcast
+                val permissionIntent = Intent(ACTION_USB_PERMISSION).apply {
+                    putExtra(UsbManager.EXTRA_DEVICE, device)
+                }
+
+                val pendingIntent = PendingIntent.getBroadcast(
+                    activityContext,
+                    device.deviceId,
+                    permissionIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                usbManager.requestPermission(device, pendingIntent)
+
+                Timber.d("Permission request sent for device: ${device.deviceName}")
+                Timber.d("Using action: $ACTION_USB_PERMISSION")
+                Timber.d("Device key: $deviceKey")
             }
-            else
-            {
-                activityContext.registerReceiver(permissionReceiver, intentFilter)
-            }
 
-            Timber.d("Receiver registered successfully")
-            Timber.d("IntentFilter actions: ${intentFilter.actionsIterator().asSequence().toList()}")
-            Timber.d("Current thread: ${Thread.currentThread().name}")
-            Timber.d("Context: ${activityContext.javaClass.simpleName}")
-
-            // Create intent with the device as an extra so it comes back in the broadcast
-            val permissionIntent = Intent(ACTION_USB_PERMISSION).apply {
-                putExtra(UsbManager.EXTRA_DEVICE, device)
-            }
-
-            val pendingIntent = PendingIntent.getBroadcast(
-                activityContext,
-                device.deviceId,
-                permissionIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            usbManager.requestPermission(device, pendingIntent)
-
-            Timber.d("Permission request sent for device: ${device.deviceName}")
-            Timber.d("Using action: $ACTION_USB_PERMISSION")
-            Timber.d("Device key: $deviceKey")
         }
         catch (error: Exception)
         {

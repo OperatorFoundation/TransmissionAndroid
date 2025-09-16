@@ -168,14 +168,20 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         return try
         {
             val buffer = ByteArray(maxSize)
-            val bytesRead = this.port.read(buffer, 1000) // 100ms timeout
+            val bytesRead = this.port.read(buffer, 100) // 100ms timeout
 
             when
             {
                 bytesRead > 0 ->
                 {
+                    Timber.v("readAvailable called with maxSize=$maxSize")
                     val readResult = buffer.sliceArray(0 until bytesRead)
-                    Timber.d("Read some data: ${readResult.toString()}")
+
+                    // Debugging
+                    val hexString = readResult.joinToString(" ") { "%02X".format(it) }
+                    val textString = readResult.decodeToString()
+                    Timber.d("Read ${bytesRead} bytes: [$hexString] = \"$textString\"")
+                    
                     readResult
                 }
 
@@ -194,7 +200,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         catch (e: Exception)
         {
             // Log but don't crash
-//           Timber.w( "Read error: ${e.message}")
+            Timber.w( "Read error: ${e.message}")
             null
         }
     }

@@ -177,18 +177,12 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
                     Timber.v("readAvailable called with maxSize=$maxSize")
                     val readResult = buffer.sliceArray(0 until bytesRead)
 
-                    // Debugging
-                    val hexString = readResult.joinToString(" ") { "%02X".format(it) }
-                    val textString = readResult.decodeToString()
-                    Timber.d("Read ${bytesRead} bytes: [$hexString] = \"$textString\"")
+                    Timber.d("Read ${bytesRead} bytes: ${readResult.decodeToString()}")
                     
                     readResult
                 }
 
-                bytesRead == 0 -> // No data available
-                {
-                    null
-                }
+                bytesRead == 0 -> null // No data available
 
                 else -> // Connection might be closed
                 {

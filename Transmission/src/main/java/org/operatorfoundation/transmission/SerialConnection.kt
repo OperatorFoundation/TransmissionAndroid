@@ -12,12 +12,14 @@ import timber.log.Timber
 import java.io.IOException
 
 
-class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection {
+class SerialConnection(private val port: UsbSerialPort, private val connection: UsbDeviceConnection): Connection
+{
     companion object
     {
         const val timeout = 0
 
-        fun new(context: Context, permissionIntent: PendingIntent): SerialConnection {
+        fun new(context: Context, permissionIntent: PendingIntent): SerialConnection
+        {
             // Find all available drivers from attached devices.
             val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
@@ -40,7 +42,8 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             return SerialConnection(port0, connection)
         }
 
-        fun new(context: Context, vendorID: Int, productID: Int, driverClass: Class<UsbSerialDriver>, permissionIntent: PendingIntent): SerialConnection {
+        fun new(context: Context, vendorID: Int, productID: Int, driverClass: Class<UsbSerialDriver>, permissionIntent: PendingIntent): SerialConnection
+        {
             // Find all available drivers from attached devices.
             val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 

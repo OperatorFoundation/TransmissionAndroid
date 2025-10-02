@@ -37,6 +37,9 @@ import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.*
 import android.hardware.usb.UsbDevice
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 
 
 /**
@@ -46,20 +49,6 @@ import android.hardware.usb.UsbDevice
 class MainActivity : ComponentActivity()
 {
     private var usbStateReceiver: BroadcastReceiver? = null
-
-    companion object
-    {
-        // Length prefix sizes supported by the transmission protocol
-        private const val PREFIX_SIZE_8_BITS = 8
-        private const val PREFIX_SIZE_16_BITS = 16
-        private const val PREFIX_SIZE_32_BITS = 32
-
-        // Demo message commands for microcontroller communication
-        private const val CMD_LED_ON = "LED_ON"
-        private const val CMD_LED_OFF = "LED_OFF"
-        private const val CMD_STATUS = "STATUS"
-        private const val CMD_PING = "PING"
-    }
 
     /**
      * Custom Timber Tree that logs to both system log and UI display.
@@ -97,6 +86,20 @@ class MainActivity : ComponentActivity()
 
     private val _availableDevices = MutableStateFlow<List<UsbSerialDriver>>(emptyList())
     private val availableDevices: StateFlow<List<UsbSerialDriver>> = _availableDevices.asStateFlow()
+
+    // Reading mode state
+    private val _readingMode = MutableStateFlow<ReadingMode>(ReadingMode.Stopped)
+    private val readingMode: StateFlow<ReadingMode> = _readingMode.asStateFlow()
+
+    private var readingJob: Job? = null
+
+    sealed class ReadingMode
+    {
+        object Stopped : ReadingMode()
+        object Streaming : ReadingMode()
+        object CommandSequence : ReadingMode()
+    }
+
 
     data class LogMessage(
         val timestamp: String,
@@ -165,7 +168,6 @@ class MainActivity : ComponentActivity()
                     {
                         currentConnection = (connectionState as SerialConnectionFactory.ConnectionState.Connected).connection
                         Timber.i("Successfully connected!")
-//                        startReadingData()
                     }
                 }
 
@@ -274,94 +276,81 @@ class MainActivity : ComponentActivity()
             }
 
             // Communication Controls
-            if (connectionState is SerialConnectionFactory.ConnectionState.Connected) {
+            if (connectionState is SerialConnectionFactory.ConnectionState.Connected)
+            {
+                val currentMode by readingMode.collectAsState()
+
                 Card(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "Microcontroller Commands",
+                            text = "Communication Mode",
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                        // Demo command sequence
+                        // Mode Selection
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            // Stream Mode Button
+                            Button(
+                                onClick = { startStreamMode() },
+                                modifier = Modifier.weight(1f),
+                                colors = if (currentMode == ReadingMode.Streaming)
+                                {
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                else { ButtonDefaults.buttonColors() }
+                            ) {
+                                Text("Stream Mode")
+                            }
+
+                            // Command Mode Button
                             Button(
                                 onClick = { runCommandSequenceTest() },
+                                modifier = Modifier.weight(1f),
+                                enabled = currentMode != ReadingMode.CommandSequence,
+                                colors = if (currentMode == ReadingMode.CommandSequence)
+                                {
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                else { ButtonDefaults.buttonColors() }
+                            ) {
+                                Text("Command Mode")
+                            }
+                        }
+
+                        // Stop button
+                        if (currentMode != ReadingMode.Stopped)
+                        {
+                            Button(
+                                onClick = { stopReading() },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondary
+                                    containerColor = MaterialTheme.colorScheme.error
                                 )
-                            ) {
-                                Text("Run Command Sequence Test")
-                            }
+                            ) { Text("Stop") }
                         }
 
-                        // Test Arduino output button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { testArduinoOutput() },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Test Output")
-                            }
-
-                            Button(
-                                onClick = { runCommandSequenceTest() },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Run Sequence")
-                            }
-                        }
-
-//                        Row(
-//                            modifier = Modifier.fillMaxWidth(),
-//                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-//                        )
-//                        {
-//                            Button(
-//                                onClick = { sendCommand(CMD_LED_ON) },
-//                                modifier = Modifier.weight(1f)
-//                            ) {
-//                                Text("LED ON")
-//                            }
-//
-//                            Button(
-//                                onClick = { sendCommand(CMD_LED_OFF) },
-//                                modifier = Modifier.weight(1f)
-//                            ) {
-//                                Text("LED OFF")
-//                            }
-//                        }
-
-//                        Row(
-//                            modifier = Modifier.fillMaxWidth(),
-//                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-//                        )
-//                        {
-//                            Button(
-//                                onClick = { sendCommand(CMD_STATUS) },
-//                                modifier = Modifier.weight(1f)
-//                            ) {
-//                                Text("Get Status")
-//                            }
-//
-//                            Button(
-//                                onClick = { sendCommand(CMD_PING) },
-//                                modifier = Modifier.weight(1f)
-//                            ) {
-//                                Text("Ping")
-//                            }
-//                        }
+                        // Status indicator
+                        Text(
+                            text = when (currentMode) {
+                                ReadingMode.Stopped -> "No active mode"
+                                ReadingMode.Streaming -> "Streaming: Displaying all incoming data"
+                                ReadingMode.CommandSequence -> "Running command sequence..."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -505,10 +494,85 @@ class MainActivity : ComponentActivity()
      */
     private fun disconnectDevice()
     {
+        stopReading()
         currentConnection?.close()
         currentConnection = null
         connectionFactory.disconnect()
         Timber.i("Disconnected from device")
+    }
+
+    /**
+     * Starts continuous streaming mode - reads and displays all incoming data.
+     */
+    private fun startStreamMode()
+    {
+        // Cancel any existing read job
+        stopReading()
+
+        _readingMode.value = ReadingMode.Streaming
+
+        readingJob = lifecycleScope.launch {
+            try
+            {
+                val connection = currentConnection
+
+                if (connection == null)
+                {
+                    Timber.w("No active connection for stream mode")
+                    _readingMode.value = ReadingMode.Stopped
+                    return@launch
+                }
+
+                Timber.i("=== Starting Stream Mode ===")
+
+                withContext(Dispatchers.IO) {
+                    while (isActive && currentConnection != null)
+                    {
+                        try
+                        {
+                            val line = connection.readLine(timeoutMs = 500, maxLength = 1024)
+
+                            if (line != null)
+                            {
+                                withContext(Dispatchers.Main){
+                                    Timber.i("← Stream: $line")
+                                }
+                            }
+                        }
+                        catch (error: Exception)
+                        {
+                            if (isActive)
+                            {
+                                Timber.w("Stream read error: ${error.message}")
+                                delay(100)
+                            }
+                        }
+                    }
+                }
+
+                Timber.i("=== Stream Mode Stopped ===")
+            }
+            catch (e: Exception)
+            {
+                Timber.e(e, "Fatal error in stream mode")
+            }
+            finally
+            {
+                _readingMode.value = ReadingMode.Stopped
+            }
+        }
+    }
+
+    /**
+     * Stops any active reading mode.
+     */
+    private fun stopReading()
+    {
+        readingJob?.cancel()
+        readingJob = null
+        currentConnection?.clearLineBuffer()
+        _readingMode.value = ReadingMode.Stopped
+        Timber.i("Reading stopped")
     }
 
     /**
@@ -544,76 +608,6 @@ class MainActivity : ComponentActivity()
             catch (e: Exception)
             {
                 Timber.e(e, "Error sending command '$command'")
-            }
-        }
-    }
-
-    /**
-     * Starts a coroutine to continuously read data from the serial connection.
-     */
-    private fun startReadingData()
-    {
-        lifecycleScope.launch {
-            try
-            {
-                val connection = currentConnection ?: return@launch
-                Timber.d("Starting Arduino-optimized read loop...")
-
-                withContext(Dispatchers.IO) {
-                    val buffer = StringBuilder()
-
-                    while (currentConnection != null)
-                    {
-                        try
-                        {
-                            // Read more aggressively since Arduino can send bursts
-                            val data = connection.readAvailable(256) // Larger buffer
-
-                            if (data != null && data.isNotEmpty())
-                            {
-                                Timber.v("Raw data received: ${data.size} bytes")
-
-                                for (byte in data)
-                                {
-                                    val char = byte.toInt().toChar()
-
-                                    when
-                                    {
-                                        char == '\n' -> {
-                                            if (buffer.isNotEmpty())
-                                            {
-                                                val message = buffer.toString().trim()
-                                                withContext(Dispatchers.Main) {
-                                                    Timber.i("← Arduino: $message")
-                                                }
-                                                buffer.clear()
-                                            }
-                                        }
-                                        char == '\r' -> {
-                                            // Skip carriage return, wait for newline
-                                        }
-                                        char.isISOControl().not() && char != '\u0000' -> {
-                                            buffer.append(char)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Shorter delay when data is flowing
-                            delay(5) // Very short delay
-
-                        }
-                        catch (e: Exception)
-                        {
-                            Timber.w("Read error: ${e.message}")
-                            delay(100)
-                        }
-                    }
-                }
-            }
-            catch (e: Exception)
-            {
-                Timber.e(e, "Error in Arduino read loop")
             }
         }
     }
@@ -677,6 +671,10 @@ class MainActivity : ComponentActivity()
      */
     private fun runCommandSequenceTest()
     {
+        // Cancel any streaming mode
+        stopReading()
+        _readingMode.value = ReadingMode.CommandSequence
+
         lifecycleScope.launch {
             try
             {
@@ -807,6 +805,10 @@ class MainActivity : ComponentActivity()
             {
                 Timber.e(e, "Fatal error during command sequence test")
             }
+            finally
+            {
+                _readingMode.value = ReadingMode.Stopped
+            }
         }
     }
 
@@ -820,68 +822,7 @@ class MainActivity : ComponentActivity()
     private suspend fun waitForResponse(connection: SerialConnection, timeoutMs: Long): String?
     {
         return withContext(Dispatchers.IO) {
-            withTimeoutOrNull(timeoutMs) {
-
-                val buffer = StringBuilder()
-                val startTime = System.currentTimeMillis()
-
-                while (System.currentTimeMillis() - startTime < timeoutMs)
-                {
-                    try
-                    {
-                        val data = connection.readAvailable()
-
-                        if (data != null && data.isNotEmpty())
-                        {
-                            for (byte in data)
-                            {
-                                val char = byte.toInt().toChar()
-
-                                when
-                                {
-                                    char == '\n' || char == '\r' ->
-                                    {
-                                        if (buffer.isNotEmpty())
-                                        {
-                                            return@withTimeoutOrNull buffer.toString().trim()
-                                        }
-                                    }
-
-                                    char.isISOControl().not() && char != '\u0000' ->
-                                    {
-                                        buffer.append(char)
-                                    }
-                                }
-                            }
-
-                            // If we got some data but no line ending yet, continue reading
-                            if (buffer.isNotEmpty())
-                            {
-                                delay(10) // Small delay before checking for more data
-                            }
-                        }
-                        else
-                        {
-                            delay(50) // No data available, wait a bit
-                        }
-                    }
-                    catch (e: Exception)
-                    {
-                        Timber.w(e.message)
-                        delay(100)
-                    }
-                }
-
-                // Timeout - return partial data if any
-                if (buffer.isNotEmpty())
-                {
-                    buffer.toString().trim()
-                }
-                else
-                {
-                    null
-                }
-            }
+            connection.readLine(timeoutMs = timeoutMs)
         }
     }
 
@@ -900,7 +841,10 @@ class MainActivity : ComponentActivity()
                 {
                     try
                     {
-                        val data = connection.readAvailable()
+                        // Calculate remaining time and use it for readAvailable timeout
+                        val remainingTime = (timeoutMs - (System.currentTimeMillis() - startTime)).toInt()
+                        val readTimeout = minOf(remainingTime, 100) // Use smaller chunks of 100ms max
+                        val data = connection.readAvailable(timeoutMs = readTimeout)
 
                         if (data != null && data.isNotEmpty()) {
                             lastDataTime = System.currentTimeMillis()
@@ -979,43 +923,6 @@ class MainActivity : ComponentActivity()
                         scanForDevices()
                     }
                 }
-            }
-        }
-    }
-
-    private fun testArduinoOutput()
-    {
-        lifecycleScope.launch {
-            try
-            {
-                val connection = currentConnection ?: return@launch
-                Timber.i("=== Testing Arduino Output ===")
-
-                withContext(Dispatchers.IO) {
-                    // Send a command that should generate output
-                    connection.write("STATUS")
-                    Timber.d("→ Sent STATUS command")
-
-                    // Wait and read multiple times
-                    repeat(10) { attempt ->
-                        delay(100) // Wait 100ms between attempts
-
-                        val data = connection.readAvailable(128)
-                        if (data != null && data.isNotEmpty())
-                        {
-                            val message = String(data)
-                            Timber.d("← Attempt $attempt: Received '$message'")
-                            val hex = data.joinToString(" ") { String.format("%02X", it) }
-                            Timber.d("← Raw hex: $hex")
-                        }
-                        else
-                        {
-                            Timber.d("← Attempt $attempt: No data")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Timber.e(e, "Error in Arduino output test")
             }
         }
     }

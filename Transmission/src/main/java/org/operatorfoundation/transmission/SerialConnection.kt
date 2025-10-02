@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.hardware.usb.UsbManager
 import android.hardware.usb.UsbDeviceConnection
+import android.health.connect.datatypes.units.Length
 import com.hoho.android.usbserial.driver.ProbeTable
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
@@ -82,6 +83,9 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
         }
     }
 
+    // Buffer for accumulating partial lines
+    private val lineBuffer = StringBuilder()
+
     init
     {
         this.port.open(this.connection)
@@ -91,6 +95,109 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             UsbSerialPort.STOPBITS_1,
             UsbSerialPort.PARITY_NONE
         )
+
+        // Set DTR and RTS control lines - many Arduino sketches need this
+        try
+        {
+            this.port.dtr = true
+            this.port.rts = true
+            Timber.d("DTR and RTS set to true")
+        }
+        catch (e: Exception)
+        {
+            Timber.w("Failed to set DTR/RTS: ${e.message}")
+        }
+    }
+
+    /**
+     * Reads data until a line terminator is found.
+     * Supports \n, \r, or \r\n line endings.
+     * Returns content without line ending characters.
+     *
+     * @param timeoutMs Maximum time to wait for a complete line.
+     * @param maxLength Maximum line length (prevents unbounded buffer growth).
+     * @return Complete line without line ending characters, partial line on timeout, or null on error.
+     */
+    @Synchronized
+    fun readLine(timeoutMs: Long = 1000, maxLength: Int = 1024): String?
+    {
+        val startTime = System.currentTimeMillis()
+
+        Timber.d("readLine() called with timeout=$timeoutMs")
+
+        try
+        {
+            while (System.currentTimeMillis() - startTime < timeoutMs)
+            {
+                // Check if we have a complete line in the buffer
+                val lineEnd = findLineEnding(lineBuffer)
+
+                if (lineEnd >= 0)
+                {
+                    val line = lineBuffer.substring(0, lineEnd)
+                    Timber.d("readLine() found complete line: '$line'")
+
+                    // Remove this line and its terminator from the buffer
+                    var removeUntil = lineEnd + 1
+
+                    // Handle \r\n cases (skip both)
+                    if (lineEnd < lineBuffer.length - 1 &&
+                        lineBuffer[lineEnd] == '\r' &&
+                        lineBuffer[lineEnd + 1] == '\n')
+                    {
+                        removeUntil = lineEnd + 2
+                    }
+
+                    lineBuffer.delete(0, removeUntil)
+
+                    return line
+                }
+
+                // Check buffer size limit
+                if (lineBuffer.length >= maxLength)
+                {
+                    Timber.w("readLine: Buffer exceeded max length ($maxLength), returning partial data.")
+                    val partial = lineBuffer.toString()
+                    lineBuffer.clear()
+                    return partial
+                }
+
+                // Try to read more data
+                val remainingTime = timeoutMs - (System.currentTimeMillis() - startTime)
+                if (remainingTime <= 0) break
+
+                val readTimeout = minOf(remainingTime.toInt(), 100)
+                val data = readAvailable(maxLength - lineBuffer.length, readTimeout)
+
+                if (data != null && data.isNotEmpty())
+                {
+                    val decoded = data.decodeToString()
+                    Timber.d("readLine() got data: '$decoded' (${data.size} bytes)")
+                    lineBuffer.append(decoded)
+                }
+                else
+                {
+                    Timber.v("readLine() no data available")
+                }
+            }
+
+            Timber.d("readLine() timeout, buffer has: '${lineBuffer.toString()}'")
+
+            // Timeout occurred
+            if (lineBuffer.isNotEmpty())
+            {
+                val partial = lineBuffer.toString()
+                lineBuffer.clear()
+                return partial
+            }
+
+            return null
+        }
+        catch (error: Exception)
+        {
+            Timber.w("readLine error: ${error.message}")
+            return null
+        }
     }
 
     @Synchronized
@@ -165,19 +272,22 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     /**
      * Reads available data without blocking, up to maxSize bytes
      * Returns null if no data available, empty array if connection closed
+     *
+     * @param maxSize Maximum number of bytes to read
+     * @param timeoutMs Timeout in milliseconds for the read operation
      */
-    fun readAvailable(maxSize: Int = 4096): ByteArray?
+    fun readAvailable(maxSize: Int = 4096, timeoutMs: Int = 100): ByteArray?
     {
         return try
         {
             val buffer = ByteArray(maxSize)
-            val bytesRead = this.port.read(buffer, 100) // 100ms timeout
+            val bytesRead = this.port.read(buffer, timeoutMs)
 
             when
             {
                 bytesRead > 0 ->
                 {
-                    Timber.v("readAvailable called with maxSize=$maxSize")
+                    Timber.v("readAvailable called with maxSize=$maxSize, timeoutMs=$timeoutMs")
                     val readResult = buffer.sliceArray(0 until bytesRead)
 
                     Timber.d("Read ${bytesRead} bytes: ${readResult.decodeToString()}")
@@ -203,41 +313,34 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     }
 
     /**
-     * Reads data with a specific timeout in milliseconds
-     * Returns null if timeout or error occurs
-     */
-    fun readWithTimeout(size: Int, timeoutMs: Int): ByteArray?
-    {
-        return try
-        {
-            val buffer = ByteArray(size)
-            val bytesRead = this.port.read(buffer, timeoutMs)
-
-            if (bytesRead == size)
-            {
-                buffer
-            }
-            else if (bytesRead > 0)
-            {
-                buffer.sliceArray(0 until bytesRead)
-            }
-            else
-            {
-                null
-            }
-        }
-        catch (e: Exception)
-        {
-            Timber.w("Read with timeout error: ${e.message}")
-            null
-        }
-    }
-
-    /**
      * Non-blocking read that returns immediately with whatever data is available
      */
     fun readNonBlocking(maxSize: Int = 64): ByteArray?
     {
-        return readWithTimeout(maxSize, 0) // 0ms timeout = immediate return
+        return readAvailable(maxSize, 0) // 0ms timeout = immediate return
+    }
+
+    /**
+     * Finds the index of the first line-ending character (\r or \n) in the string builder.
+     * Returns -1 if no line ending is found.
+     */
+    private fun findLineEnding(buffer: StringBuilder): Int
+    {
+        for (i in 0 until buffer.length)
+        {
+            if (buffer[i] == '\r' || buffer[i] == '\n') return i
+        }
+
+        return  -1
+    }
+
+    /**
+     * Clears the internal line buffer.
+     * Useful when switching communication modes or recovering from errors.
+     */
+    @Synchronized
+    fun clearLineBuffer()
+    {
+        lineBuffer.clear()
     }
 }

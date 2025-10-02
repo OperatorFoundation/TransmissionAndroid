@@ -335,10 +335,9 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
     }
 
     /**
-     * Clears the internal line buffer.
-     * Useful when switching communication modes or recovering from errors.
+     * Clears the internal line buffer in a thread-safe way.
+     * Safe to call even if a read operation is in progress.
      */
-    @Synchronized
     fun clearLineBuffer()
     {
         lineBuffer.clear()

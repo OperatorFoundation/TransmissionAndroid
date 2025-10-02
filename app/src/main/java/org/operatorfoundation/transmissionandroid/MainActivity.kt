@@ -301,6 +301,7 @@ class MainActivity : ComponentActivity()
                             Button(
                                 onClick = { startStreamMode() },
                                 modifier = Modifier.weight(1f),
+                                enabled = currentMode != ReadingMode.Streaming,
                                 colors = if (currentMode == ReadingMode.Streaming)
                                 {
                                     ButtonDefaults.buttonColors(
@@ -712,6 +713,12 @@ class MainActivity : ComponentActivity()
                 // Send each command and wait for response
                 for ((index, command) in commandSequence.withIndex())
                 {
+                    if (!isActive)
+                    {
+                        Timber.i("Command sequence cancelled by user")
+                        break
+                    }
+
                     try
                     {
                         Timber.i("Sequence [${index + 1}/${commandSequence.size}]: Sending '$command'")

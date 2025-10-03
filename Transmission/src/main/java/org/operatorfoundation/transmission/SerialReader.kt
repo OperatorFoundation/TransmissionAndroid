@@ -93,7 +93,6 @@ class SerialReader(private val connection: SerialConnection)
         scope: CoroutineScope,
         timeoutMs: Int = 100,
         maxSize: Int = 4096,
-        timeoutMs: Int = 100,
         onData: (ByteArray) -> Unit,
         onError: (Exception) -> Unit = {}
     ): Job

@@ -16,8 +16,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.operatorfoundation.transmission.SerialConnection
 import org.operatorfoundation.transmission.SerialConnectionFactory
 import org.operatorfoundation.transmission.SerialReader
-import timber.log.Timber
-import java.sql.Driver
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -108,7 +106,9 @@ class SerialDemoViewModel(application: Application) : AndroidViewModel(applicati
     /**
      * Disconnects from the current device.
      */
-    fun disconnect() {
+    fun disconnect()
+    {
+        stopReading()
         currentConnection?.close()
         currentConnection = null
         serialReader = null

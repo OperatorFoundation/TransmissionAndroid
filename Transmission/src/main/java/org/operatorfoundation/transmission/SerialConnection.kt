@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.hardware.usb.UsbManager
 import android.hardware.usb.UsbDeviceConnection
-import android.health.connect.datatypes.units.Length
 import com.hoho.android.usbserial.driver.ProbeTable
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
@@ -175,14 +174,8 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
                     Timber.d("readLine() got data: '$decoded' (${data.size} bytes)")
                     lineBuffer.append(decoded)
                 }
-                else
-                {
-                    Timber.v("readLine() no data available")
-                }
             }
-
-            Timber.d("readLine() timeout, buffer has: '${lineBuffer.toString()}'")
-
+            
             // Timeout occurred
             if (lineBuffer.isNotEmpty())
             {

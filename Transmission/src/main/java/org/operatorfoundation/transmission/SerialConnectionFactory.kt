@@ -108,16 +108,14 @@ class SerialConnectionFactory(context: Context)
      * Creates a SerialConnection for a device with a specific driver class.
      * Useful when the default USB serial prober doesn't detect your device.
      *
-     * @param vendorId USB vendor ID
-     * @param productId USB product ID
+     * @param vendorID USB vendor ID
+     * @param productID USB product ID
      * @param driverClass Specific USB serial driver class to use
-     * @param baudRate Serial communication baud rate
      */
     fun createConnectionWithDriver(
         vendorID: Int,
         productID: Int,
         driverClass: Class<out UsbSerialDriver>,
-        baudRate: Int = DEFAULT_BAUD_RATE
     ): Flow<ConnectionState>
     {
         kotlinx.coroutines.GlobalScope.launch {

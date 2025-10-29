@@ -175,7 +175,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
                     lineBuffer.append(decoded)
                 }
             }
-            
+
             // Timeout occurred
             if (lineBuffer.isNotEmpty())
             {

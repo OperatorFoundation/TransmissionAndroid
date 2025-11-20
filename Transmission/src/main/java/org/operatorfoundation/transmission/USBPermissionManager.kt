@@ -152,15 +152,23 @@ class USBPermissionManager(private val activityContext: Context)
                     // Verify the response is for our device.
                     if (receivedDevice != null && getDeviceKey(receivedDevice) == deviceKey)
                     {
-                        val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                        permissionCache[deviceKey] = granted
+                        val broadcastGrantedFlag = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                        Timber.d("Broadcast granted flag: $broadcastGrantedFlag")
 
-                        val result = if (granted)
+                        // CRITICAL: Don't trust the broadcast flag - check actual permission state
+                        val actuallyHasPermission = usbManager.hasPermission(receivedDevice)
+                        Timber.d("Actual permission state from UsbManager: $actuallyHasPermission")
+
+                        permissionCache[deviceKey] = actuallyHasPermission
+
+                        val result = if (actuallyHasPermission)
                         {
+                            Timber.d("🟢 Permission GRANTED - confirmed by UsbManager")
                             PermissionResult.Granted
                         }
                         else
                         {
+                            Timber.d("🔴 Permission DENIED - confirmed by UsbManager")
                             PermissionResult.Denied
                         }
 

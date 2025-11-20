@@ -6,12 +6,17 @@ import android.hardware.usb.UsbManager
 import com.hoho.android.usbserial.driver.ProbeTable
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialProber
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
@@ -42,7 +47,7 @@ class SerialConnectionFactory(context: Context)
 
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
     private val permissionManager = USBPermissionManager(context)
-
+    private val connectionScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
@@ -67,45 +72,48 @@ class SerialConnectionFactory(context: Context)
         parity: Int = DEFAULT_PARITY
     )
     {
-        // Prevent multiple simultaneous connection attempts
-        if (_connectionState.value != ConnectionState.Disconnected)
+        // Check current state
+        val currentState = _connectionState.value
+        if (currentState !is ConnectionState.Disconnected && currentState !is ConnectionState.Error)
         {
-            Timber.w("Connection already in progress, ignoring new request")
+            Timber.w("Connection already in progress (state: $currentState), ignoring new request")
             return
         }
 
-        // Start connection process
-        kotlinx.coroutines.GlobalScope.launch {
+        connectionScope.launch {
             try
             {
-                Timber.d("Requesting USB permission for ${device.deviceName}")
+                Timber.d("🔵 Requesting USB permission for ${device.deviceName}")
                 _connectionState.value = ConnectionState.RequestingPermission
 
-                // Request permission and wait for result
-                val permissionResult = permissionManager.requestPermissionFor(device).first()
+                // Switch to IO for permission request
+                val permissionResult = withContext(Dispatchers.IO) {
+                    permissionManager.requestPermissionFor(device).first()
+                }
 
-                Timber.d("Permission result received: $permissionResult")
+                Timber.d("🔵 Permission result: $permissionResult")
 
                 when (permissionResult)
                 {
                     is USBPermissionManager.PermissionResult.Granted -> {
-                        Timber.d("Permission granted, connecting to device...")
+                        Timber.d("🟢 Permission GRANTED, connecting...")
                         _connectionState.value = ConnectionState.Connecting
 
-                        // Create the serial connection
-                        val connection = createSerialConnection(device, baudRate, dataBits, stopBits, parity)
+                        val connection = withContext(Dispatchers.IO) {
+                            createSerialConnection(device, baudRate, dataBits, stopBits, parity)
+                        }
 
-                        Timber.d("Serial connection established successfully")
+                        Timber.d("🟢 Serial connection established")
                         _connectionState.value = ConnectionState.Connected(connection)
                     }
 
                     is USBPermissionManager.PermissionResult.Denied -> {
-                        Timber.w("USB permission denied by user")
+                        Timber.w("🔴 USB permission DENIED")
                         _connectionState.value = ConnectionState.Error("USB permission denied by user")
                     }
 
                     is USBPermissionManager.PermissionResult.Error -> {
-                        Timber.e("Permission request failed: ${permissionResult.message}")
+                        Timber.e("🔴 Permission error: ${permissionResult.message}")
                         _connectionState.value = ConnectionState.Error(
                             "Permission request failed: ${permissionResult.message}"
                         )
@@ -114,7 +122,7 @@ class SerialConnectionFactory(context: Context)
             }
             catch (e: Exception)
             {
-                Timber.e(e, "Failed to create connection")
+                Timber.e(e, "🔴 Connection failed")
                 _connectionState.value = ConnectionState.Error(
                     "Failed to create connection: ${e.message}",
                     e
@@ -218,6 +226,8 @@ class SerialConnectionFactory(context: Context)
         {
             currentState.connection.close()
         }
+
+        connectionScope.cancel()
         _connectionState.value = ConnectionState.Disconnected
     }
 

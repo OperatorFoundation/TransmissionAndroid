@@ -50,12 +50,14 @@ class SerialConnectionFactory(context: Context)
      * Creates a SerialConnection for the specified USB device.
      * Handles permission requests automatically and updates connection state.
      *
+     * This method initiates the connection process and returns immediately.
+     * The caller should observe the connectionState flow to track progress.
+     *
      * @param device The USB device to connect to
      * @param baudRate Serial communication baud rate (default: 115200)
      * @param dataBits Number of data bits (default: 8)
      * @param stopBits Number of stop bits (default: 1)
      * @param parity Parity setting (default: none)
-     * @return Flow<ConnectionState> Connection state updates
      */
     fun createConnection(
         device: UsbDevice,
@@ -63,29 +65,47 @@ class SerialConnectionFactory(context: Context)
         dataBits: Int = DEFAULT_DATA_BITS,
         stopBits: Int = DEFAULT_STOP_BITS,
         parity: Int = DEFAULT_PARITY
-    ): Flow<ConnectionState>
+    )
     {
+        // Prevent multiple simultaneous connection attempts
+        if (_connectionState.value != ConnectionState.Disconnected)
+        {
+            Timber.w("Connection already in progress, ignoring new request")
+            return
+        }
+
         // Start connection process
         kotlinx.coroutines.GlobalScope.launch {
             try
             {
+                Timber.d("Requesting USB permission for ${device.deviceName}")
                 _connectionState.value = ConnectionState.RequestingPermission
+
+                // Request permission and wait for result
                 val permissionResult = permissionManager.requestPermissionFor(device).first()
+
+                Timber.d("Permission result received: $permissionResult")
+
                 when (permissionResult)
                 {
                     is USBPermissionManager.PermissionResult.Granted -> {
+                        Timber.d("Permission granted, connecting to device...")
                         _connectionState.value = ConnectionState.Connecting
 
                         // Create the serial connection
                         val connection = createSerialConnection(device, baudRate, dataBits, stopBits, parity)
+
+                        Timber.d("Serial connection established successfully")
                         _connectionState.value = ConnectionState.Connected(connection)
                     }
 
                     is USBPermissionManager.PermissionResult.Denied -> {
+                        Timber.w("USB permission denied by user")
                         _connectionState.value = ConnectionState.Error("USB permission denied by user")
                     }
 
                     is USBPermissionManager.PermissionResult.Error -> {
+                        Timber.e("Permission request failed: ${permissionResult.message}")
                         _connectionState.value = ConnectionState.Error(
                             "Permission request failed: ${permissionResult.message}"
                         )
@@ -94,14 +114,13 @@ class SerialConnectionFactory(context: Context)
             }
             catch (e: Exception)
             {
+                Timber.e(e, "Failed to create connection")
                 _connectionState.value = ConnectionState.Error(
                     "Failed to create connection: ${e.message}",
                     e
                 )
             }
         }
-
-        return connectionState
     }
 
     /**

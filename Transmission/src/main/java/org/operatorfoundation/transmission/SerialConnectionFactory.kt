@@ -30,7 +30,7 @@ class SerialConnectionFactory(context: Context)
         private const val DEFAULT_BAUD_RATE = 115200
         private const val DEFAULT_DATA_BITS = 8
         private const val DEFAULT_STOP_BITS = 0
-        private const val DEFAULT_PARITY = 0
+        private const val DEFAULT_PARITY = 1
     }
 
     /**

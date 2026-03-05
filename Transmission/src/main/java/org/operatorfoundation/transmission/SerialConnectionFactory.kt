@@ -232,6 +232,19 @@ class SerialConnectionFactory(context: Context)
     }
 
     /**
+     * Closes the current connection and resets state to Disconnected.
+     * Does not cancel the connection scope, so reconnection remains possible.
+     * Call this when a USB device detach event is received.
+     */
+    fun onDeviceDetached() {
+        val currentState = _connectionState.value
+        if (currentState is ConnectionState.Connected) {
+            currentState.connection.close()
+        }
+        _connectionState.value = ConnectionState.Disconnected
+    }
+
+    /**
     * Creates the actual SerialConnection instance from a permitted USB device.
     *
     * @param device USB device with granted permission

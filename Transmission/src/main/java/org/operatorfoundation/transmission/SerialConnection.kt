@@ -280,11 +280,7 @@ class SerialConnection(private val port: UsbSerialPort, private val connection: 
             {
                 bytesRead > 0 ->
                 {
-                    Timber.v("readAvailable called with maxSize=$maxSize, timeoutMs=$timeoutMs")
                     val readResult = buffer.sliceArray(0 until bytesRead)
-
-                    Timber.d("Read ${bytesRead} bytes: ${readResult.decodeToString()}")
-                    
                     readResult
                 }
 

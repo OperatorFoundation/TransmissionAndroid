@@ -78,15 +78,15 @@ class USBPermissionManager(private val activityContext: Context)
 
     /**
      * Requests permission for the specified USB device.
-     * Returns a flow the emits the permission result.
+     * Returns a flow that emits the permission result once and closes.
      *
      * @param device The USB device to request permission for.
-     * @return Flow<PermissionResult> The permission request outcome.
+     * @return Flow<PermissionResult> emitting a single result.
      */
     fun requestPermissionFor(device: UsbDevice): Flow<PermissionResult> = callbackFlow {
         val deviceKey = getDeviceKey(device)
 
-        // Check if permission already exists.
+        // Short-circuit if permission is already granted.
         if (hasPermission(device))
         {
             trySend(PermissionResult.Granted)
@@ -94,170 +94,47 @@ class USBPermissionManager(private val activityContext: Context)
             return@callbackFlow
         }
 
-        // Create a broadcast receiver to handle the permission response.
         val permissionReceiver = object : BroadcastReceiver()
         {
             override fun onReceive(context: Context, intent: Intent)
             {
-                Timber.d("=== BROADCAST RECEIVED ===")
-                Timber.d("Action: ${intent.action}")
-                Timber.d("Expected: $ACTION_USB_PERMISSION")
-                Timber.d("Context: ${context.javaClass.simpleName}")
-                Timber.d("Thread: ${Thread.currentThread().name}")
+                if (intent.action != ACTION_USB_PERMISSION) return
 
-                if (ACTION_USB_PERMISSION == intent.action)
+                val receivedDevice =
+                    intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+
+                // Ignore broadcasts for other devices.
+                if (receivedDevice == null || getDeviceKey(receivedDevice) != deviceKey)
                 {
-                    Timber.d("USB permission broadcast received!")
-
-                    // Check what Android actually sends
-                    val androidDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                    {
-                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
-                    }
-                    else
-                    {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    }
-
-                    Timber.d("Android provided device: ${androidDevice?.deviceName}")
-                    Timber.d("Android device key: ${androidDevice?.let { getDeviceKey(it) }}")
-                    Timber.d("Expected device key: $deviceKey")
-                    Timber.d("Permission granted flag: ${intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)}")
-
-                    // Debug: Log all extras in the intent
-                    val extras = intent.extras
-                    if (extras != null)
-                    {
-                        for (key in extras.keySet())
-                        {
-                            Timber.d("Intent extra: $key = ${extras.get(key)}")
-                        }
-                    }
-                    else
-                    {
-                        Timber.d("No extras in intent")
-                    }
-
-                    val receivedDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                    {
-                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
-                    }
-                    else
-                    {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    }
-
-                    // Verify the response is for our device.
-                    if (receivedDevice != null && getDeviceKey(receivedDevice) == deviceKey)
-                    {
-                        val broadcastGrantedFlag = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                        Timber.d("Broadcast granted flag: $broadcastGrantedFlag")
-
-                        // CRITICAL: Don't trust the broadcast flag - check actual permission state
-                        val actuallyHasPermission = usbManager.hasPermission(receivedDevice)
-                        Timber.d("Actual permission state from UsbManager: $actuallyHasPermission")
-
-                        permissionCache[deviceKey] = actuallyHasPermission
-
-                        val result = if (actuallyHasPermission)
-                        {
-                            Timber.d("🟢 Permission GRANTED - confirmed by UsbManager")
-                            PermissionResult.Granted
-                        }
-                        else
-                        {
-                            Timber.d("🔴 Permission DENIED - confirmed by UsbManager")
-                            PermissionResult.Denied
-                        }
-
-                        trySend(result)
-                        close()
-                    }
-                    else
-                    {
-                        if (receivedDevice != null) {
-                            Timber.d(
-                                "Received permission for an unexpected device: ${
-                                    getDeviceKey(
-                                        receivedDevice
-                                    )
-                                }"
-                            )
-                        }
-                        else
-                        {
-                            Timber.d("Received permission but the device is null.")
-                        }
-
-                        trySend(PermissionResult.Error("Device mismatch in permission response"))
-                        close()
-                    }
+                    Timber.w("Permission broadcast for unexpected device: ${receivedDevice?.deviceName}")
+                    return
                 }
-                else
-                {
-                    Timber.d("Ignoring broadcast with different action")
-                }
+
+                // EXTRA_PERMISSION_GRANTED is unreliable on some Android versions; query directly.
+                val granted = usbManager.hasPermission(receivedDevice)
+                Timber.d("Permission result for ${device.deviceName}: granted=$granted")
+                permissionCache[deviceKey] = granted
+
+                trySend(if (granted) PermissionResult.Granted else PermissionResult.Denied)
+                close()
             }
         }
 
-        // Register receiver and request permission
-        try
-        {
-            kotlinx.coroutines.MainScope().launch {
-                val intentFilter = IntentFilter(ACTION_USB_PERMISSION)
+        // Register before calling requestPermission() so we don't miss it
+        val intentFilter = IntentFilter(ACTION_USB_PERMISSION)
+        activityContext.registerReceiver(permissionReceiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
+        Timber.d("Permission receiver registered for ${device.deviceName}")
 
-                Timber.d("=== REGISTERING RECEIVER ===")
-                Timber.d("Context: ${activityContext.javaClass.simpleName}")
-                Timber.d("Filter: ${intentFilter.actionsIterator().asSequence().toList()}")
+        val pendingIntent = PendingIntent.getBroadcast(
+            activityContext,
+            device.deviceId,
+            Intent(ACTION_USB_PERMISSION),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                {
-                    activityContext.registerReceiver(
-                        permissionReceiver,
-                        intentFilter,
-                        Context.RECEIVER_NOT_EXPORTED
-                    )
-                }
-                else
-                {
-                    activityContext.registerReceiver(permissionReceiver, intentFilter)
-                }
+        usbManager.requestPermission(device, pendingIntent)
+        Timber.d("Permission request sent for ${device.deviceName}")
 
-                Timber.d("Receiver registered successfully")
-                Timber.d("IntentFilter actions: ${intentFilter.actionsIterator().asSequence().toList()}")
-                Timber.d("Current thread: ${Thread.currentThread().name}")
-                Timber.d("Context: ${activityContext.javaClass.simpleName}")
-
-                // Create intent with the device as an extra so it comes back in the broadcast
-                val permissionIntent = Intent(ACTION_USB_PERMISSION).apply {
-                    putExtra(UsbManager.EXTRA_DEVICE, device)
-                }
-
-                val pendingIntent = PendingIntent.getBroadcast(
-                    activityContext,
-                    device.deviceId,
-                    permissionIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-
-                usbManager.requestPermission(device, pendingIntent)
-
-                Timber.d("Permission request sent for device: ${device.deviceName}")
-                Timber.d("Using action: $ACTION_USB_PERMISSION")
-                Timber.d("Device key: $deviceKey")
-            }
-
-        }
-        catch (error: Exception)
-        {
-            Timber.e(error, "Failed to register receiver or request permission")
-            trySend(PermissionResult.Error("Failed to request permission: ${error.message}"))
-            close()
-        }
-
-        // Cleanup when flow is cancelled.
         awaitClose {
             try
             {

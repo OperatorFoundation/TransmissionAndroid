@@ -86,11 +86,7 @@ class SerialConnectionFactory(context: Context)
                 Timber.d("🔵 Requesting USB permission for ${device.deviceName}")
                 _connectionState.value = ConnectionState.RequestingPermission
 
-                // Switch to IO for permission request
-                val permissionResult = withContext(Dispatchers.IO) {
-                    permissionManager.requestPermissionFor(device).first()
-                }
-
+                val permissionResult = permissionManager.requestPermissionFor(device).first()
                 Timber.d("🔵 Permission result: $permissionResult")
 
                 when (permissionResult)

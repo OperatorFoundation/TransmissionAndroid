@@ -128,8 +128,10 @@ class USBPermissionManager(private val activityContext: Context)
         val pendingIntent = PendingIntent.getBroadcast(
             activityContext,
             device.deviceId,
-            Intent(ACTION_USB_PERMISSION),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            Intent(ACTION_USB_PERMISSION).apply {
+                `package` = activityContext.packageName  // make the intent explicit
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
 
         usbManager.requestPermission(device, pendingIntent)
